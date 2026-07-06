@@ -1,0 +1,13 @@
+.env
+.env.docker
+*.db
+data/*.db
+backend/data/*.db
+frontend/dist/
+frontend/node_modules/
+backend/.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+outputs/
+work/

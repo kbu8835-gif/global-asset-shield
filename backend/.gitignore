@@ -1,0 +1,11 @@
+.venv/
+.env
+.env.docker
+__pycache__/
+.pytest_cache/
+*.pyc
+*.db
+data/*.json
+data/*.db
+!.env.example
+!.env.docker.example

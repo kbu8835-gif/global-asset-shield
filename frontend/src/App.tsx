@@ -1,0 +1,267 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  clearToken,
+  createImmuneReport,
+  getMe,
+  getInvestmentDNA,
+  getJournal,
+  getToken,
+  logout,
+  reviewJournal,
+  type ImmuneReportPayload,
+  type InvestmentDNA as InvestmentDNAType,
+  type JournalEntry,
+  type User,
+} from "./api";
+import AuthPage from "./components/AuthPage";
+import Hero from "./components/Hero";
+import ConversationScan from "./components/ConversationScan";
+import ImmuneForm from "./components/ImmuneForm";
+import ImmuneReport from "./components/ImmuneReport";
+import InvestmentDNA from "./components/InvestmentDNA";
+import JournalList from "./components/JournalList";
+import KOLIntelligence from "./components/KOLIntelligence";
+import NotebookWorkspace from "./components/NotebookWorkspace";
+import ReviewPanel from "./components/ReviewPanel";
+import UserMenu from "./components/UserMenu";
+
+const defaultForm: ImmuneReportPayload = {
+  asset: "PEPE",
+  asset_type: "crypto",
+  user_intent: "KOL推荐",
+  user_text: "这个币已经涨了40%，我怕踏空，想梭哈",
+  buy_reason: "看到KOL推荐，感觉马上要起飞",
+  risk_awareness: "不太清楚风险",
+  worst_case_plan: "跌了就再看看",
+  position_size: "50%",
+  horizon: "短线",
+};
+
+export default function App() {
+  const scanRef = useRef<HTMLDivElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [mainView, setMainView] = useState<"conversation" | "notebook" | "kol" | "dna">("conversation");
+  const [scanMode, setScanMode] = useState<"conversation" | "advanced">("conversation");
+  const [form, setForm] = useState<ImmuneReportPayload>(defaultForm);
+  const [report, setReport] = useState<any | null>(null);
+  const [journal, setJournal] = useState<JournalEntry[]>([]);
+  const [dna, setDna] = useState<InvestmentDNAType | null>(null);
+  const [review, setReview] = useState<any | null>(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [loadingJournal, setLoadingJournal] = useState(false);
+  const [loadingDNA, setLoadingDNA] = useState(false);
+  const [bootingAuth, setBootingAuth] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [error, setError] = useState("");
+
+  const loadJournal = async () => {
+    setLoadingJournal(true);
+    try {
+      setJournal(await getJournal());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load journal");
+    } finally {
+      setLoadingJournal(false);
+    }
+  };
+
+  const loadDNA = async () => {
+    setLoadingDNA(true);
+    try {
+      setDna(await getInvestmentDNA());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load Investment DNA");
+    } finally {
+      setLoadingDNA(false);
+    }
+  };
+
+  const submitScan = async (payload: ImmuneReportPayload) => {
+    setLoadingReport(true);
+    setError("");
+    setReview(null);
+    try {
+      const nextReport = await createImmuneReport(payload);
+      setReport(nextReport);
+      await loadJournal();
+      await loadDNA();
+      window.setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create immune report");
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const runScan = async () => {
+    await submitScan(form);
+  };
+
+  const handleReview = async (entry: JournalEntry) => {
+    setError("");
+    try {
+      const result = await reviewJournal(entry.id, {
+        journal_id: entry.id,
+        current_price: 0.000012,
+        user_result_text: "一个月后亏了28%，我当时太冲动了",
+      });
+      setReview(result);
+      await loadJournal();
+      await loadDNA();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to review journal");
+    }
+  };
+
+  const handleAuthenticated = (nextUser: User) => {
+    setUser(nextUser);
+    setError("");
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    clearToken();
+    setUser(null);
+    setReport(null);
+    setJournal([]);
+    setDna(null);
+    setReview(null);
+    setError("");
+  };
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      if (!getToken()) {
+        setBootingAuth(false);
+        return;
+      }
+      try {
+        setUser(await getMe());
+      } catch {
+        clearToken();
+        setUser(null);
+      } finally {
+        setBootingAuth(false);
+      }
+    };
+    bootstrap();
+    const expire = () => {
+      setUser(null);
+      setError("Session expired. Please login again.");
+    };
+    window.addEventListener("auth:expired", expire);
+    return () => window.removeEventListener("auth:expired", expire);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    loadJournal();
+    loadDNA();
+  }, [user?.id]);
+
+  if (bootingAuth) {
+    return (
+      <main className="flex min-h-screen items-center justify-center text-slate-100">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/80 p-6 text-sm text-slate-300">Loading secure workspace...</div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage onAuthenticated={handleAuthenticated} />;
+  }
+
+  return (
+    <main className="min-h-screen text-slate-100">
+      <UserMenu user={user} onLogout={handleLogout} />
+      <Hero onStart={() => scanRef.current?.scrollIntoView({ behavior: "smooth" })} />
+      <section ref={scanRef} className="mx-auto max-w-6xl px-5 pt-2">
+        <div className="flex flex-wrap gap-2 rounded-lg border border-slate-800 bg-slate-950/80 p-1">
+          {[
+            ["conversation", "Conversation"],
+            ["notebook", "Notebook"],
+            ["kol", "KOL"],
+            ["dna", "DNA"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              className={`rounded-md px-4 py-2 text-sm font-semibold ${mainView === key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:text-white"}`}
+              onClick={() => setMainView(key as "conversation" | "notebook" | "kol" | "dna")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {mainView === "conversation" ? (
+        <>
+          <section className="mx-auto max-w-6xl px-5 pt-4">
+            <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950/80 p-1">
+              <button
+                className={`rounded-md px-4 py-2 text-sm font-semibold ${scanMode === "conversation" ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:text-white"}`}
+                onClick={() => setScanMode("conversation")}
+              >
+                Conversation Mode
+              </button>
+              <button
+                className={`rounded-md px-4 py-2 text-sm font-semibold ${scanMode === "advanced" ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:text-white"}`}
+                onClick={() => setScanMode("advanced")}
+              >
+                Advanced Form
+              </button>
+            </div>
+          </section>
+          {scanMode === "conversation" ? (
+            <ConversationScan loading={loadingReport} onSubmit={submitScan} />
+          ) : (
+            <ImmuneForm form={form} loading={loadingReport} onChange={setForm} onSubmit={runScan} />
+          )}
+          {error ? (
+            <section className="mx-auto max-w-6xl px-5 py-2">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
+            </section>
+          ) : null}
+          <div ref={reportRef}>
+            <ImmuneReport report={report} />
+          </div>
+          <JournalList journal={journal} loading={loadingJournal} onRefresh={loadJournal} onReview={handleReview} />
+          <ReviewPanel review={review} />
+        </>
+      ) : null}
+
+      {mainView === "notebook" ? (
+        <>
+          {error ? (
+            <section className="mx-auto max-w-6xl px-5 py-2">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
+            </section>
+          ) : null}
+          <NotebookWorkspace onError={setError} />
+        </>
+      ) : null}
+
+      {mainView === "kol" ? (
+        <>
+          {error ? (
+            <section className="mx-auto max-w-6xl px-5 py-2">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
+            </section>
+          ) : null}
+          <KOLIntelligence onError={setError} />
+        </>
+      ) : null}
+
+      {mainView === "dna" ? (
+        <>
+          {error ? (
+            <section className="mx-auto max-w-6xl px-5 py-2">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
+            </section>
+          ) : null}
+          <InvestmentDNA dna={dna} loading={loadingDNA} onRefresh={loadDNA} />
+        </>
+      ) : null}
+    </main>
+  );
+}

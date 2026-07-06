@@ -1,0 +1,72 @@
+from immune.bias import detect_bias
+from immune.conviction import build_conviction_score
+from immune.decision import make_decision
+from immune.devil import build_devil_advocate
+from immune.emotion import scan_emotion
+from immune.journal import save_report
+from immune.kol_intelligence import build_kol_risk_summary, calculate_user_kol_dependency
+from immune.regret import simulate_regret
+from immune.risk import run_risk_scan
+from schemas import ImmuneReportRequest, ImmuneReportResponse
+
+
+def _combined_text(payload: ImmuneReportRequest) -> str:
+    return " ".join(
+        [
+            payload.user_intent or "",
+            payload.user_text or "",
+            payload.buy_reason or "",
+            payload.risk_awareness or "",
+            payload.worst_case_plan or "",
+            payload.position_size or "",
+            payload.horizon or "",
+        ]
+    )
+
+
+def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneReportResponse:
+    asset = payload.asset.upper()
+    risk_scan = run_risk_scan(payload)
+    emotion_scan = scan_emotion(payload)
+    bias_detection = detect_bias(_combined_text(payload))
+    kol_risk_scan = build_kol_risk_summary(_combined_text(payload), user_id)
+    kol_dependency = calculate_user_kol_dependency(user_id).kol_dependency if kol_risk_scan else 0
+    devil = build_devil_advocate(asset, payload.asset_type, risk_scan, emotion_scan, bias_detection)
+    regret = simulate_regret(asset, emotion_scan["emotion_score"], bias_detection, payload.position_size)
+    conviction = build_conviction_score(payload)
+    decision = make_decision(
+        risk_scan["risk_score"],
+        emotion_scan["emotion_score"],
+        bias_detection["bias_score"],
+        conviction["score"],
+        kol_dependency=kol_dependency,
+        kol_triggered=bool(kol_risk_scan),
+    )
+    summary = (
+        f"{asset} 本次免疫扫描：资产风险 {risk_scan['risk_score']}，情绪风险 "
+        f"{emotion_scan['emotion_score']}，偏差风险 {bias_detection['bias_score']}，信念分 "
+        f"{conviction['score']}。{decision['decision_reason']}。"
+    )
+
+    report = {
+        "report_id": 0,
+        "asset": asset,
+        "asset_type": payload.asset_type,
+        "risk_scan": risk_scan,
+        "emotion_scan": emotion_scan,
+        "bias_detection": bias_detection,
+        "devil_advocate": devil,
+        "regret_simulation": regret,
+        "conviction_score": conviction,
+        "final_decision": decision["final_decision"],
+        "decision_reason": decision["decision_reason"],
+        "position_advice": decision["position_advice"],
+        "journal_saved": False,
+        "summary": summary,
+        "kol_risk_scan": kol_risk_scan,
+    }
+
+    report_id = save_report(payload, report, user_id)
+    report["report_id"] = report_id
+    report["journal_saved"] = True
+    return ImmuneReportResponse(**report)
