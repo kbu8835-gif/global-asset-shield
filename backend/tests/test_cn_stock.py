@@ -29,3 +29,17 @@ def test_cn_stock_scan_api_fallback(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["raw_data"]["fallback_mock"] is True
+
+
+def test_stock_scan_api_auto_detects_cn_stock(monkeypatch):
+    def fail(_symbol):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr("scanner.cn_stock.fetch_cn_stock", fail)
+    response = client.get("/scan/stock/600519")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["raw_data"]["symbol"] == "600519"
+    assert data["raw_data"]["currency"] == "CNY"
+    assert any("A股" in reason for reason in data["risk_reasons"])

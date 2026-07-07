@@ -111,6 +111,9 @@ def crypto_scan(token: str):
 
 @app.get("/scan/stock/{symbol}")
 def stock_scan(symbol: str):
+    normalized = symbol.strip().upper().replace(".SH", "").replace(".SZ", "").replace("SH", "").replace("SZ", "")
+    if normalized.isdigit() and len(normalized) <= 6:
+        return scan_cn_stock(symbol)
     return scan_stock(symbol)
 
 

@@ -4,6 +4,7 @@ import requests
 
 from config import DEEPSEEK_API_BASE, DEEPSEEK_API_KEY, DEEPSEEK_MODEL
 from database import is_database_connected
+from scanner.cn_stock import fetch_cn_stock
 from scanner.stock import fetch_yahoo_chart_stock
 
 
@@ -14,6 +15,7 @@ def build_data_health() -> Dict[str, Any]:
         _check_dexscreener(),
         _check_goplus(),
         _check_yahoo_chart(),
+        _check_cn_stock(),
     ]
     degraded_count = len([item for item in checks if item["status"] != "connected"])
     overall = "connected" if degraded_count == 0 else "degraded"
@@ -102,6 +104,16 @@ def _check_yahoo_chart() -> Dict[str, Any]:
         return _source("Yahoo Chart US Stock Backup", "degraded", "Yahoo Chart 可达，但测试没有返回价格。", False, True)
     except Exception as exc:
         return _source("Yahoo Chart US Stock Backup", "degraded", f"Yahoo Chart 暂时不可达：{exc.__class__.__name__}，美股会继续使用 mock fallback。", False, True)
+
+
+def _check_cn_stock() -> Dict[str, Any]:
+    try:
+        data = fetch_cn_stock("600519")
+        if data.get("price") is not None:
+            return _source("AkShare A股行情", "connected", f"A股免费行情源可用，贵州茅台最近价格 {data['price']}。", True, True)
+        return _source("AkShare A股行情", "degraded", "AkShare 可达，但测试没有返回价格。", False, True)
+    except Exception as exc:
+        return _source("AkShare A股行情", "degraded", f"AkShare 暂时不可达：{exc.__class__.__name__}，A股会使用 mock fallback。", False, True)
 
 
 def _summary(checks: List[Dict[str, Any]]) -> str:
