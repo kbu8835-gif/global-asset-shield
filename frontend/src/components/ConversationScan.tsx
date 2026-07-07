@@ -6,7 +6,7 @@ type ConversationScanProps = {
   onSubmit: (payload: ImmuneReportPayload) => void;
 };
 
-type Step = "asset" | "intent" | "position" | "worstCase" | "risk" | "ready" | "running";
+type Step = "asset" | "direction" | "intent" | "position" | "worstCase" | "risk" | "ready" | "running";
 
 const intentReasons: Record<string, string> = {
   KOL推荐: "看到KOL推荐，感觉马上要起飞",
@@ -17,8 +17,13 @@ const intentReasons: Record<string, string> = {
 };
 
 const intentOptions = ["KOL推荐", "朋友推荐", "涨很多了怕踏空", "自己研究", "抄底补仓"];
+const directionOptions = [
+  { value: "long", label: "做多 / 买入", prompt: "想买入或看涨" },
+  { value: "short", label: "做空 / 看跌", prompt: "想做空或看跌" },
+] as const;
 const positionOptions = ["5%", "10%", "30%", "50%", "ALL IN"];
-const worstCaseSuggestions = ["跌 15% 就止损", "等 24 小时再决定", "不补仓，先复盘"];
+const worstCaseSuggestions = ["下跌 10% 就止损", "等 24 小时再决定", "不补仓，先复盘"];
+const shortWorstCaseSuggestions = ["上涨 10% 就止损", "不加空，先复盘", "等收盘再决定"];
 const riskSuggestions = ["流动性不足", "KOL 喊单情绪过热", "我说不清最大风险"];
 const assetTypeLabels = {
   crypto: "加密货币",
@@ -52,6 +57,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
   const [step, setStep] = useState<Step>("asset");
   const [asset, setAsset] = useState("PEPE");
   const [assetType, setAssetType] = useState<"crypto" | "stock" | "cn_stock">("crypto");
+  const [tradeDirection, setTradeDirection] = useState<"long" | "short">("long");
   const [intent, setIntent] = useState("");
   const [positionSize, setPositionSize] = useState("");
   const [worstCasePlan, setWorstCasePlan] = useState("");
@@ -59,14 +65,19 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
 
   const assetLabel = asset.trim() || "this asset";
   const ready = step === "ready" || step === "running";
+  const directionEnabled = assetType !== "cn_stock";
 
   const buildPayload = (): ImmuneReportPayload => {
     const cleanedAsset = asset.trim() || "PEPE";
     const buyReason = intentReasons[intent] || "我想先做一次免疫扫描";
-    const userText = `我想买 ${cleanedAsset}，因为 ${intent || "不清楚"}，准备投入 ${positionSize || "未确定"}，如果跌 40%，我会${worstCasePlan || "还没想清楚"}。`;
+    const effectiveDirection = directionEnabled ? tradeDirection : "long";
+    const directionText = directionOptions.find((option) => option.value === effectiveDirection)?.prompt || "想买入或看涨";
+    const adverseMove = effectiveDirection === "short" ? "上涨 25%" : "下跌 25%";
+    const userText = `我对 ${cleanedAsset} 的方向是${directionText}，因为 ${intent || "不清楚"}，准备投入 ${positionSize || "未确定"}，如果${adverseMove}，我会${worstCasePlan || "还没想清楚"}。`;
     return {
       asset: cleanedAsset,
       asset_type: assetType,
+      trade_direction: effectiveDirection,
       user_intent: intent,
       user_text: userText,
       buy_reason: buyReason,
@@ -107,24 +118,56 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                 />
                 <select
                   value={assetType}
-                  onChange={(event) => setAssetType(event.target.value as "crypto" | "stock" | "cn_stock")}
+                  onChange={(event) => {
+                    const nextType = event.target.value as "crypto" | "stock" | "cn_stock";
+                    setAssetType(nextType);
+                    if (nextType === "cn_stock") {
+                      setTradeDirection("long");
+                    }
+                  }}
                   className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
                 >
                   <option value="crypto">加密货币</option>
                   <option value="stock">美股</option>
                   <option value="cn_stock">A股</option>
                 </select>
-                <button className={chipClass} onClick={() => setStep("intent")}>
+                <button className={chipClass} onClick={() => setStep(assetType === "cn_stock" ? "intent" : "direction")}>
                   Next
                 </button>
               </div>
             </div>
           </div>
 
-          {(step !== "asset" || ready) && (
+          {directionEnabled && (step !== "asset" || ready) && (
             <>
               {userBubble(`${assetLabel} / ${assetTypeLabels[assetType]}`)}
-              {aiBubble(`Why do you want to buy ${assetLabel}?`, step === "intent")}
+              {aiBubble(`What are you planning to do with ${assetLabel}?`, step === "direction")}
+              <div className="flex flex-wrap justify-end gap-2">
+                {directionOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    className={`${chipClass} ${tradeDirection === option.value ? "border-cyan-300 bg-cyan-300/15" : ""}`}
+                    onClick={() => {
+                      setTradeDirection(option.value);
+                      setStep("intent");
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {(step === "intent" || step === "position" || step === "worstCase" || step === "risk" || ready) && (
+            <>
+              {directionEnabled ? userBubble(directionOptions.find((option) => option.value === tradeDirection)?.label) : userBubble(`${assetLabel} / ${assetTypeLabels[assetType]}`)}
+              {aiBubble(
+                tradeDirection === "short"
+                  ? `为什么想做空 ${assetLabel}？`
+                  : `为什么想做多 ${assetLabel}？`,
+                step === "intent",
+              )}
               <div className="flex flex-wrap justify-end gap-2">
                 {intentOptions.map((option) => (
                   <button
@@ -166,11 +209,16 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
           {(step === "worstCase" || step === "risk" || ready) && (
             <>
               {userBubble(positionSize)}
-              {aiBubble(`If ${assetLabel} drops 40% tomorrow, what will you do?`, step === "worstCase")}
+              {aiBubble(
+                tradeDirection === "short"
+                  ? `假如 ${assetLabel} 上涨 25%，你怎么办？`
+                  : `假如 ${assetLabel} 下跌 25%，你怎么办？`,
+                step === "worstCase",
+              )}
               <div className="flex justify-end">
                 <div className="w-full max-w-xl">
                   <div className="mb-2 flex flex-wrap justify-end gap-2">
-                    {worstCaseSuggestions.map((suggestion) => (
+                    {(tradeDirection === "short" ? shortWorstCaseSuggestions : worstCaseSuggestions).map((suggestion) => (
                       <button
                         key={suggestion}
                         type="button"
@@ -200,7 +248,12 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
           {(step === "risk" || ready) && (
             <>
               {userBubble(worstCasePlan)}
-              {aiBubble(`What is the biggest risk of ${assetLabel}?`, step === "risk")}
+              {aiBubble(
+                tradeDirection === "short"
+                  ? `你现在做空 ${assetLabel}，最担心什么风险？`
+                  : `你现在做多 ${assetLabel}，最担心什么风险？`,
+                step === "risk",
+              )}
               <div className="flex justify-end">
                 <div className="w-full max-w-xl">
                   <div className="mb-2 flex flex-wrap justify-end gap-2">
@@ -241,6 +294,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                   onClick={() => {
                     setStep("asset");
                     setIntent("");
+                    setTradeDirection("long");
                     setPositionSize("");
                     setWorstCasePlan("");
                     setRiskAwareness("");

@@ -29,6 +29,7 @@ import UserMenu from "./components/UserMenu";
 const defaultForm: ImmuneReportPayload = {
   asset: "PEPE",
   asset_type: "crypto",
+  trade_direction: "long",
   user_intent: "KOL推荐",
   user_text: "这个币已经涨了40%，我怕踏空，想梭哈",
   buy_reason: "看到KOL推荐，感觉马上要起飞",

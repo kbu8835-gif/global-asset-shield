@@ -60,6 +60,7 @@ class KOLCheckResponse(BaseModel):
 class ImmuneReportRequest(BaseModel):
     asset: str
     asset_type: str
+    trade_direction: Optional[str] = "long"
     user_intent: Optional[str] = None
     user_text: Optional[str] = None
     buy_reason: Optional[str] = None
@@ -73,6 +74,7 @@ class ImmuneReportResponse(BaseModel):
     report_id: int
     asset: str
     asset_type: str
+    trade_direction: Optional[str] = "long"
     risk_scan: Dict[str, Any]
     data_confidence: Optional[Dict[str, Any]] = None
     emotion_scan: Dict[str, Any]
@@ -81,6 +83,7 @@ class ImmuneReportResponse(BaseModel):
     regret_simulation: Dict[str, Any]
     conviction_score: Dict[str, Any]
     munger_lens: Optional[Dict[str, Any]] = None
+    observation_plan: Optional[Dict[str, Any]] = None
     ai_coach: Optional[Dict[str, Any]] = None
     final_decision: str
     decision_reason: str
@@ -95,6 +98,7 @@ class JournalEntry(BaseModel):
     created_at: str
     asset: str
     asset_type: str
+    trade_direction: Optional[str] = None
     user_intent: Optional[str] = None
     user_text: Optional[str] = None
     buy_reason: Optional[str] = None
@@ -341,6 +345,7 @@ class InvestmentOutcomeResponse(BaseModel):
 class NotebookCreate(BaseModel):
     asset: str
     asset_type: str = "crypto"
+    trade_direction: Optional[str] = "long"
     title: Optional[str] = None
     decision: Optional[str] = "Wait"
     status: Optional[str] = "Open"
@@ -353,6 +358,8 @@ class NotebookCreate(BaseModel):
 
 
 class NotebookUpdate(BaseModel):
+    asset: Optional[str] = None
+    asset_type: Optional[str] = None
     title: Optional[str] = None
     decision: Optional[str] = None
     status: Optional[str] = None
@@ -363,6 +370,7 @@ class NotebookUpdate(BaseModel):
     risk_awareness: Optional[str] = None
     worst_case_plan: Optional[str] = None
     position_size: Optional[str] = None
+    trade_direction: Optional[str] = None
     mistakes: Optional[str] = None
     lesson: Optional[str] = None
     next_action: Optional[str] = None
@@ -379,6 +387,7 @@ class NotebookListItem(BaseModel):
     title: str
     asset: str
     asset_type: str
+    trade_direction: Optional[str] = None
     decision: str
     status: str
     entry_type: str

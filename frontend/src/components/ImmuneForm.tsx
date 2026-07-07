@@ -12,6 +12,10 @@ const fieldClass =
 
 export default function ImmuneForm({ form, loading, onChange, onSubmit }: ImmuneFormProps) {
   const update = (key: keyof ImmuneReportPayload, value: string) => {
+    if (key === "asset_type" && value === "cn_stock") {
+      onChange({ ...form, asset_type: value as "cn_stock", trade_direction: "long" });
+      return;
+    }
     onChange({ ...form, [key]: value });
   };
 
@@ -32,7 +36,7 @@ export default function ImmuneForm({ form, loading, onChange, onSubmit }: Immune
           </button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <label className="block">
             <span className="mb-2 block text-xs font-medium uppercase text-slate-400">Asset</span>
             <input className={fieldClass} value={form.asset} onChange={(event) => update("asset", event.target.value)} />
@@ -45,6 +49,15 @@ export default function ImmuneForm({ form, loading, onChange, onSubmit }: Immune
               <option value="cn_stock">A股</option>
             </select>
           </label>
+          {form.asset_type !== "cn_stock" ? (
+            <label className="block">
+              <span className="mb-2 block text-xs font-medium uppercase text-slate-400">Direction</span>
+              <select className={fieldClass} value={form.trade_direction || "long"} onChange={(event) => update("trade_direction", event.target.value)}>
+                <option value="long">做多 / 买入</option>
+                <option value="short">做空 / 看跌</option>
+              </select>
+            </label>
+          ) : null}
           <label className="block">
             <span className="mb-2 block text-xs font-medium uppercase text-slate-400">User Intent</span>
             <select className={fieldClass} value={form.user_intent} onChange={(event) => update("user_intent", event.target.value)}>

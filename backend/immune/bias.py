@@ -28,15 +28,21 @@ BIAS_RULES = [
     },
     {
         "bias_type": "Overconfidence",
-        "keywords": ["我很确定", "闭眼买", "稳赚", "不会亏"],
+        "keywords": ["我很确定", "闭眼买", "稳赚", "不会亏", "必跌", "一定会跌", "归零", "跌爆"],
         "warning": "越确定的时候，越要先问自己哪里可能错。",
         "better_question": "如果我判断错了，第一信号是什么？",
     },
     {
         "bias_type": "Revenge Trading",
-        "keywords": ["回本", "翻回来", "上一单亏了", "这次一定"],
+        "keywords": ["回本", "翻回来", "上一单亏了", "这次一定", "报复", "干回来", "亏回来"],
         "warning": "你不是在交易机会，你是在和上一笔亏损较劲。",
         "better_question": "这笔交易独立来看仍然值得做吗？",
+    },
+    {
+        "bias_type": "Short Bias",
+        "keywords": ["做空", "开空", "short", "看跌", "跌爆", "归零"],
+        "warning": "看空不等于可以做空。方向、时机和止损缺一项，做空会先惩罚你的仓位。",
+        "better_question": "如果它先上涨 30%，我是否有明确止损，而不是加空证明自己？",
     },
     {
         "bias_type": "Lottery Bias",
@@ -67,4 +73,3 @@ def detect_bias(text: str) -> dict:
         "bias_score": clamp_score(len(biases) * 20),
         "biases": biases,
     }
-

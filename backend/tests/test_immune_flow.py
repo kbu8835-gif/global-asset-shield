@@ -120,3 +120,73 @@ def test_immune_report_supports_cn_stock(monkeypatch):
     assert response.json()["asset_type"] == "cn_stock"
     assert response.json()["risk_scan"]["raw_data"]["name"] == "贵州茅台"
     assert response.json()["data_confidence"]["score"] < 50
+
+
+def test_immune_report_supports_short_direction(monkeypatch):
+    monkeypatch.setattr(
+        "immune.risk.scan_stock",
+        lambda asset: {
+            "risk_score": 45,
+            "risk_level": "中风险",
+            "risk_reasons": ["mock stock"],
+            "raw_data": {"symbol": asset, "price": 300, "market_cap": 1_000_000_000, "pe": 60},
+        },
+    )
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "TSLA",
+            "asset_type": "stock",
+            "trade_direction": "short",
+            "user_intent": "自己研究",
+            "user_text": "我想做空 TSLA，觉得它一定会跌，涨了我就止损",
+            "buy_reason": "估值太高，想做空",
+            "risk_awareness": "可能被逼空",
+            "worst_case_plan": "上涨 10% 就止损",
+            "position_size": "5%",
+            "horizon": "短线",
+        },
+    )
+
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["trade_direction"] == "short"
+    assert data["final_decision"] in {"🔴 Don't Short", "🟡 Wait", "🟢 Small Short"}
+    assert any("逼空" in item for item in data["devil_advocate"]["against_buying"])
+    assert any(item["bias_type"] == "Short Bias" for item in data["bias_detection"]["biases"])
+
+
+def test_immune_report_watch_direction_returns_observation_plan(monkeypatch):
+    monkeypatch.setattr(
+        "immune.risk.scan_crypto",
+        lambda asset: {
+            "risk_score": 42,
+            "risk_level": "中风险",
+            "risk_reasons": ["mock crypto"],
+            "raw_data": {"asset": asset, "price_usd": "0.01", "liquidity": 100000, "volume24h": 20000},
+        },
+    )
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "PEPE",
+            "asset_type": "crypto",
+            "trade_direction": "watch",
+            "user_intent": "涨很多了怕踏空",
+            "user_text": "我先观察 PEPE，不想追高",
+            "buy_reason": "等成交量和流动性确认",
+            "risk_awareness": "成交量和流动性改善",
+            "worst_case_plan": "不追，重新扫描",
+            "position_size": "5%",
+            "horizon": "24小时",
+        },
+    )
+
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["trade_direction"] == "watch"
+    assert data["final_decision"] == "🟡 Wait"
+    assert data["observation_plan"]["signal_to_watch"] == "成交量和流动性改善"
+    assert "观望" in data["observation_plan"]["summary"]

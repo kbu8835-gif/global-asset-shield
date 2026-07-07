@@ -26,14 +26,22 @@ function toneForDecision(decision: string): "red" | "yellow" | "green" {
 }
 
 function decisionTitle(decision: string) {
+  if (decision.includes("Don't Short")) return "先不要做空";
   if (decision.includes("Don't")) return "先不要买";
+  if (decision.includes("Small Short")) return "只允许小仓位做空";
   if (decision.includes("Small")) return "只允许小仓位";
   return "先观察";
 }
 
 function nextActionsForDecision(decision: string): string[] {
+  if (decision.includes("Don't Short")) {
+    return ["至少等 24 小时再重新扫描一次", "写清楚做空失效条件：上涨到哪里立刻退出", "不要用加空来证明自己看对"];
+  }
   if (decision.includes("Don't")) {
     return ["至少等 24 小时再重新扫描一次", "先写清楚失效条件：什么情况证明你错了", "不要用加仓来证明自己没错"];
+  }
+  if (decision.includes("Small Short")) {
+    return ["风险敞口控制在 3%-5%", "下单前写好止损、止盈和最长持有时间", "确认自己不是因为讨厌它才做空"];
   }
   if (decision.includes("Small")) {
     return ["仓位控制在 5%-10%", "下单前写好止损和复盘日期", "把这次理由保存到 Notebook，之后对照结果"];
@@ -61,6 +69,12 @@ function formatNumber(value: unknown) {
   const number = Number(value);
   if (value === null || value === undefined || Number.isNaN(number)) return "未知";
   return number.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+function directionLabel(direction?: string) {
+  if (direction === "short") return "做空 / 看跌";
+  if (direction === "watch") return "观望 / 不开仓";
+  return "做多 / 买入";
 }
 
 function MarketData({ rawData, assetType }: { rawData: Record<string, any>; assetType: string }) {
@@ -260,6 +274,36 @@ function DataConfidence({ confidence }: { confidence: any }) {
   );
 }
 
+function ObservationPlan({ plan }: { plan: any }) {
+  if (!plan) return null;
+  return (
+    <Section title="Observation Plan">
+      <div className="rounded-lg border border-cyan-300/30 bg-cyan-300/10 p-4">
+        <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">观望不是空等</div>
+        <p className="mt-2 text-lg font-semibold leading-7 text-white">{plan.summary}</p>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+          <div className="text-xs text-slate-500">观察信号</div>
+          <div className="mt-2 font-semibold text-white">{plan.signal_to_watch}</div>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+          <div className="text-xs text-slate-500">突然上涨时</div>
+          <div className="mt-2 font-semibold text-white">{plan.fomo_plan}</div>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+          <div className="text-xs text-slate-500">复查时间</div>
+          <div className="mt-2 font-semibold text-white">{plan.review_timing}</div>
+        </div>
+      </div>
+      <p className="mt-4 text-amber-100">{plan.no_position_rule}</p>
+      <ul className="mt-3 space-y-2">
+        {listItems(plan.checklist).map((item, index) => <li key={index}>- {item}</li>)}
+      </ul>
+    </Section>
+  );
+}
+
 export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportProps) {
   if (!report) {
     return (
@@ -282,6 +326,9 @@ export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportPro
             <h2 className="mt-2 text-3xl font-semibold text-white">
               {report.asset} <span className="text-base font-medium text-slate-400">/ {report.asset_type}</span>
             </h2>
+            <div className="mt-3 inline-flex rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+              扫描方向：{directionLabel(report.trade_direction)}
+            </div>
             <p className="mt-3 max-w-3xl text-slate-300">{report.summary}</p>
           </div>
           <div className={`rounded-lg border p-5 text-center ${toneForDecision(report.final_decision) === "red" ? "border-red-400/40 bg-red-500/15" : toneForDecision(report.final_decision) === "green" ? "border-emerald-300/40 bg-emerald-500/15" : "border-amber-300/40 bg-amber-400/15"}`}>
@@ -324,6 +371,7 @@ export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportPro
 
       <div className="grid gap-5 lg:grid-cols-2">
         <DataConfidence confidence={report.data_confidence} />
+        <ObservationPlan plan={report.observation_plan} />
         <Section title="A. Risk Scan">
           <p className="font-semibold text-white">{report.risk_scan?.risk_score} / {report.risk_scan?.risk_level}</p>
           <MarketData rawData={report.risk_scan?.raw_data} assetType={report.asset_type} />
@@ -349,7 +397,7 @@ export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportPro
           </div>
         </Section>
         <Section title="D. Devil's Advocate">
-          <p className="font-semibold text-rose-100">Against Buying</p>
+          <p className="font-semibold text-rose-100">{report.trade_direction === "short" ? "Against Shorting" : report.trade_direction === "watch" ? "Against Opening a Position" : "Against Buying"}</p>
           <ul className="mt-2 space-y-2">{listItems(report.devil_advocate?.against_buying).map((item, index) => <li key={index}>- {item}</li>)}</ul>
           <p className="mt-4 font-semibold text-emerald-100">Supporting Case</p>
           <ul className="mt-2 space-y-2">{listItems(report.devil_advocate?.supporting_case).map((item, index) => <li key={index}>- {item}</li>)}</ul>
@@ -358,10 +406,10 @@ export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportPro
         </Section>
         <Section title="Regret Simulator">
           <div className="space-y-3">
-            <p><span className="text-white">Buy and up:</span> {report.regret_simulation?.buy_and_up}</p>
-            <p><span className="text-white">Buy and down:</span> {report.regret_simulation?.buy_and_down}</p>
-            <p><span className="text-white">Not buy and up:</span> {report.regret_simulation?.not_buy_and_up}</p>
-            <p><span className="text-white">Not buy and down:</span> {report.regret_simulation?.not_buy_and_down}</p>
+            <p><span className="text-white">{report.trade_direction === "short" ? "Short and up" : "Buy and up"}:</span> {report.regret_simulation?.buy_and_up}</p>
+            <p><span className="text-white">{report.trade_direction === "short" ? "Short and down" : "Buy and down"}:</span> {report.regret_simulation?.buy_and_down}</p>
+            <p><span className="text-white">{report.trade_direction === "short" ? "Not short and up" : "Not buy and up"}:</span> {report.regret_simulation?.not_buy_and_up}</p>
+            <p><span className="text-white">{report.trade_direction === "short" ? "Not short and down" : "Not buy and down"}:</span> {report.regret_simulation?.not_buy_and_down}</p>
             <p className="text-amber-100">{report.regret_simulation?.likely_regret_pattern}</p>
             <p className="text-rose-100">{report.regret_simulation?.behavior_warning}</p>
           </div>

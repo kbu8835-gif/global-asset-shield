@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from database import get_connection, init_db
 from immune.coach import build_ai_coach
+from immune.direction import normalize_trade_direction
 from schemas import (
     NotebookCreate,
     NotebookDetail,
@@ -62,6 +63,18 @@ def _analysis(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _report_json(row: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        return json.loads(row.get("full_report_json") or "{}")
+    except json.JSONDecodeError:
+        return {}
+
+
+def _trade_direction(row: Dict[str, Any]) -> str:
+    report = _report_json(row)
+    return normalize_trade_direction(row.get("trade_direction") or report.get("trade_direction") or "long")
+
+
 def _timeline(row: Dict[str, Any]) -> List[Dict[str, str]]:
     events = [{"date": row.get("created_at") or "", "event": "Created"}]
     if row.get("full_report_json"):
@@ -81,6 +94,7 @@ def _detail(row: Dict[str, Any]) -> NotebookDetail:
         title=_title(row),
         asset=row.get("asset") or "",
         asset_type=row.get("asset_type") or "crypto",
+        trade_direction=_trade_direction(row),
         decision=_decision(row),
         status=_status(row),
         entry_type=row.get("entry_type") or "immune_report",
@@ -119,6 +133,7 @@ def list_notebooks(user_id: int) -> List[NotebookListItem]:
                 title=_title(data),
                 asset=data.get("asset") or "",
                 asset_type=data.get("asset_type") or "crypto",
+                trade_direction=_trade_direction(data),
                 decision=_decision(data),
                 status=_status(data),
                 entry_type=data.get("entry_type") or "immune_report",
@@ -146,11 +161,11 @@ def create_notebook(payload: NotebookCreate, user_id: int) -> NotebookDetail:
             INSERT INTO journal_entries (
                 created_at, updated_at, title, status, entry_type,
                 user_id,
-                asset, asset_type, user_text, buy_reason, risk_awareness, worst_case_plan,
+                asset, asset_type, trade_direction, user_text, buy_reason, risk_awareness, worst_case_plan,
                 position_size, risk_score, emotion_score, bias_score, conviction_score,
                 decision, final_decision, summary, full_report_json, review_status, notes
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 now,
@@ -161,6 +176,7 @@ def create_notebook(payload: NotebookCreate, user_id: int) -> NotebookDetail:
                 user_id,
                 payload.asset,
                 payload.asset_type,
+                normalize_trade_direction(payload.trade_direction),
                 payload.notes or "",
                 payload.buy_reason or "",
                 payload.risk_awareness or "",
@@ -173,7 +189,7 @@ def create_notebook(payload: NotebookCreate, user_id: int) -> NotebookDetail:
                 payload.decision or "Wait",
                 payload.decision or "Wait",
                 "Manual notebook entry",
-                "{}",
+                json.dumps({"trade_direction": normalize_trade_direction(payload.trade_direction)}, ensure_ascii=False),
                 "pending",
                 payload.notes or "",
             ),
@@ -189,6 +205,8 @@ def create_notebook(payload: NotebookCreate, user_id: int) -> NotebookDetail:
 def update_notebook(notebook_id: int, payload: NotebookUpdate, user_id: int) -> Optional[NotebookDetail]:
     init_db()
     allowed = {
+        "asset",
+        "asset_type",
         "title",
         "decision",
         "status",
@@ -203,17 +221,25 @@ def update_notebook(notebook_id: int, payload: NotebookUpdate, user_id: int) -> 
         "lesson",
         "next_action",
         "review_date",
+        "trade_direction",
     }
     updates = {key: value for key, value in payload.model_dump(exclude_unset=True).items() if key in allowed}
+    trade_direction_update = updates.pop("trade_direction", None)
     updates["updated_at"] = _now()
     if "decision" in updates:
         updates["final_decision"] = updates["decision"]
-    set_clause = ", ".join(f"{key} = ?" for key in updates)
-    values = list(updates.values()) + [notebook_id]
     with get_connection() as conn:
         row = conn.execute("SELECT id FROM journal_entries WHERE id = ? AND user_id = ?", (notebook_id, user_id)).fetchone()
         if row is None:
             return None
+        if trade_direction_update is not None:
+            current_row = conn.execute("SELECT full_report_json FROM journal_entries WHERE id = ? AND user_id = ?", (notebook_id, user_id)).fetchone()
+            report = _report_json(_row_to_dict(current_row))
+            normalized_direction = normalize_trade_direction(trade_direction_update)
+            updates["trade_direction"] = normalized_direction
+            report["trade_direction"] = normalized_direction
+            updates["full_report_json"] = json.dumps(report, ensure_ascii=False)
+        set_clause = ", ".join(f"{key} = ?" for key in updates)
         conn.execute(f"UPDATE journal_entries SET {set_clause} WHERE id = ? AND user_id = ?", list(updates.values()) + [notebook_id, user_id])
         conn.commit()
     return get_notebook(notebook_id, user_id)

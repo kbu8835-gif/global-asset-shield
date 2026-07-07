@@ -18,6 +18,7 @@ export type AuthResponse = {
 export type ImmuneReportPayload = {
   asset: string;
   asset_type: "crypto" | "stock" | "cn_stock";
+  trade_direction?: "long" | "short" | "watch";
   user_intent?: string;
   user_text?: string;
   buy_reason?: string;
@@ -60,6 +61,7 @@ export type NotebookListItem = {
   title: string;
   asset: string;
   asset_type: string;
+  trade_direction?: string | null;
   decision: string;
   status: string;
   entry_type: string;
@@ -85,10 +87,13 @@ export type NotebookDetail = NotebookListItem & {
 };
 
 export type NotebookUpdate = Partial<{
+  asset: string;
+  asset_type: string;
   title: string;
   decision: string;
   status: string;
   entry_type: string;
+  trade_direction: string;
   notes: string;
   buy_reason: string;
   user_text: string;
@@ -331,6 +336,7 @@ export function getNotebook(id: number) {
 export function createNotebook(payload: {
   asset: string;
   asset_type?: string;
+  trade_direction?: string;
   title?: string;
   decision?: string;
   notes?: string;

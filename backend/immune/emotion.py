@@ -12,6 +12,7 @@ def _combined_text(payload: ImmuneReportRequest) -> str:
             payload.worst_case_plan or "",
             payload.position_size or "",
             payload.horizon or "",
+            payload.trade_direction or "",
         ]
     )
 
@@ -39,6 +40,8 @@ def scan_emotion(payload: ImmuneReportRequest) -> dict:
         (["KOL", "kol", "博主", "大V", "喊单"], "KOL 驱动", 25),
         (["亏了", "补仓", "回本"], "亏损厌恶/沉没成本", 30),
         (["不知道风险", "不清楚风险", "不太清楚风险"], "风险无知", 20),
+        (["做空", "开空", "short", "看跌", "必跌", "归零", "跌爆"], "做空冲动", 25),
+        (["报复", "干回来", "爆仓后", "亏回来"], "报复性交易", 25),
     ]
 
     for keywords, label, points in rules:
@@ -64,4 +67,3 @@ def scan_emotion(payload: ImmuneReportRequest) -> dict:
         "detected_emotions": detected,
         "intervention_advice": advice,
     }
-

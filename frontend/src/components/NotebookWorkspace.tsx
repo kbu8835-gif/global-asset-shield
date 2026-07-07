@@ -19,6 +19,7 @@ const inputClass =
   "w-full rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300";
 const areaClass =
   "min-h-28 w-full rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-3 text-sm leading-6 text-white outline-none focus:border-cyan-300";
+const pillClass = "rounded-full border border-slate-700 px-3 py-1 text-xs font-semibold text-slate-300";
 
 function formatDate(value?: string | null) {
   if (!value) return "";
@@ -27,8 +28,25 @@ function formatDate(value?: string | null) {
 
 function decisionIcon(decision: string) {
   if (decision.includes("Don't")) return "🔴";
-  if (decision.includes("Buy") || decision.includes("Small")) return "🟢";
+  if (decision.includes("Buy") || decision.includes("Small") || decision.includes("Short")) return "🟢";
   return "🟡";
+}
+
+function statusTone(status: string) {
+  if (status === "Reviewed") return "border-emerald-300/40 bg-emerald-400/10 text-emerald-100";
+  if (status === "Archived") return "border-slate-600 bg-slate-800 text-slate-300";
+  return "border-cyan-300/40 bg-cyan-400/10 text-cyan-100";
+}
+
+function directionLabel(direction?: string | null) {
+  if (direction === "short") return "做空";
+  if (direction === "watch") return "观望";
+  return "做多";
+}
+
+function decisionOptions(direction?: string | null) {
+  if (direction === "short") return ["Short", "Wait", "Don't Short"];
+  return ["Buy", "Wait", "Don't Buy"];
 }
 
 function scoreBlock(label: string, value?: number) {
@@ -40,6 +58,12 @@ function scoreBlock(label: string, value?: number) {
   );
 }
 
+function formatSaveState(saving: boolean, savedAt: string) {
+  if (saving) return "正在保存...";
+  if (!savedAt) return "已开启自动保存";
+  return `已保存 ${savedAt}`;
+}
+
 export default function NotebookWorkspace({ onError, focusNotebookId }: NotebookWorkspaceProps) {
   const [items, setItems] = useState<NotebookListItem[]>([]);
   const [selected, setSelected] = useState<NotebookDetail | null>(null);
@@ -49,6 +73,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
   const [statusFilter, setStatusFilter] = useState("All");
   const [sort, setSort] = useState("updated");
   const [saving, setSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState("");
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
 
@@ -91,6 +116,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     draft?.worst_case_plan,
     draft?.decision,
     draft?.status,
+    draft?.trade_direction,
   ]);
 
   const assets = useMemo(() => ["All", ...Array.from(new Set(items.map((item) => item.asset)))], [items]);
@@ -116,6 +142,8 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     if (!draft) return;
     if (showState) setSaving(true);
     const updated = await updateNotebook(draft.id, {
+      asset: draft.asset,
+      asset_type: draft.asset_type,
       title: draft.title,
       notes: draft.notes || "",
       buy_reason: draft.buy_reason || "",
@@ -123,9 +151,11 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
       worst_case_plan: draft.worst_case_plan || "",
       decision: draft.decision,
       status: draft.status,
+      trade_direction: draft.trade_direction || "long",
     });
     setSelected(updated);
     setDraft(updated);
+    setLastSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     await loadList();
     if (showState) setSaving(false);
   };
@@ -134,9 +164,10 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     const created = await createNotebook({
       asset: "NEW",
       asset_type: "crypto",
-      title: "New investment note",
+      trade_direction: "long",
+      title: `投资笔记 ${new Date().toISOString().slice(0, 10)}`,
       decision: "Wait",
-      notes: "",
+      notes: "我正在考虑这笔交易，还没有下结论。",
     });
     await loadList();
     await openNotebook(created.id);
@@ -165,6 +196,13 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     }
   };
 
+  const stats = useMemo(() => {
+    const open = items.filter((item) => item.status === "Open").length;
+    const reviewed = items.filter((item) => item.status === "Reviewed").length;
+    const archived = items.filter((item) => item.status === "Archived").length;
+    return { total: items.length, open, reviewed, archived };
+  }, [items]);
+
   return (
     <section className="mx-auto max-w-7xl px-5 py-8">
       <div className="grid min-h-[760px] gap-5 lg:grid-cols-[360px_1fr]">
@@ -173,13 +211,26 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
             <div>
               <div className="text-sm uppercase tracking-[0.18em] text-cyan-200">Notebook</div>
               <h2 className="mt-1 text-xl font-semibold text-white">AI Investment Notebook</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">这里就是你的投资日记。扫描、理由、决定和复盘都放在这里。</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">这不是交易流水。这里记录你为什么动手、何时停手、事后学到了什么。</p>
             </div>
             <button onClick={createBlank} className="rounded-lg bg-cyan-300 px-3 py-2 text-sm font-semibold text-slate-950">
               New
             </button>
           </div>
-          <input className={inputClass} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes..." />
+          <div className="mb-4 grid grid-cols-4 gap-2">
+            {[
+              ["全部", stats.total],
+              ["Open", stats.open],
+              ["复盘", stats.reviewed],
+              ["归档", stats.archived],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg border border-slate-800 bg-slate-900/60 p-2 text-center">
+                <div className="text-xs text-slate-500">{label}</div>
+                <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+              </div>
+            ))}
+          </div>
+          <input className={inputClass} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产、理由或决定..." />
           <div className="mt-3 grid grid-cols-3 gap-2">
             <select className={inputClass} value={sort} onChange={(event) => setSort(event.target.value)}>
               <option value="updated">最近修改</option>
@@ -198,7 +249,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
             </select>
           </div>
           <div className="mt-4 space-y-2">
-            {filtered.map((item) => (
+            {filtered.length ? filtered.map((item) => (
               <div
                 key={item.id}
                 className={`w-full rounded-lg border p-3 text-left transition ${
@@ -211,9 +262,14 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
                       <span>📄</span>
                       <span className="truncate font-semibold">{item.title}</span>
                     </div>
-                    <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                      <span>{item.asset}</span>
+                      <span>{directionLabel(item.trade_direction)}</span>
+                      <span className={`rounded-full border px-2 py-0.5 ${statusTone(item.status)}`}>{item.status}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                       <span>{formatDate(item.updated_at)}</span>
-                      <span>{item.decision}</span>
+                      <span>{decisionIcon(item.decision)} {item.decision}</span>
                     </div>
                   </button>
                   <button
@@ -225,7 +281,11 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
                   </button>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-5 text-sm leading-6 text-slate-400">
+                还没有笔记。你可以先跑一次免疫扫描，或新建一条投资想法。真正有用的投资记录，应该写在下单之前。
+              </div>
+            )}
           </div>
         </aside>
 
@@ -233,13 +293,17 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
           {draft ? (
             <div className="mx-auto max-w-3xl">
               <div className="mb-6">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(draft.status)}`}>{draft.status}</div>
+                  <div className="text-xs text-slate-500">{formatSaveState(saving, lastSavedAt)}</div>
+                </div>
                 <input
                   className="w-full bg-transparent text-4xl font-semibold text-white outline-none"
                   value={draft.title}
                   onChange={(event) => patchDraft({ title: event.target.value })}
                 />
                 <div className="mt-2 text-sm text-slate-400">
-                  {draft.asset} · {draft.asset_type} · {formatDate(draft.created_at)}
+                  {draft.asset} · {draft.asset_type} · {directionLabel(draft.trade_direction)} · {formatDate(draft.created_at)}
                 </div>
               </div>
 
@@ -257,32 +321,53 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
 
               <div className="mb-6 grid gap-4 md:grid-cols-2">
                 <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                  <div className="text-sm text-slate-400">Asset</div>
-                  <div className="mt-2 text-2xl font-semibold text-white">{draft.asset}</div>
-                  <div className="mt-1 text-slate-400">{draft.asset_type}</div>
+                  <div className="text-sm text-slate-400">资产与方向</div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-[1fr_130px_130px]">
+                    <input className={inputClass} value={draft.asset} onChange={(event) => patchDraft({ asset: event.target.value.toUpperCase() })} />
+                    <select
+                      className={inputClass}
+                      value={draft.asset_type}
+                      onChange={(event) => {
+                        const assetType = event.target.value;
+                        patchDraft({ asset_type: assetType, trade_direction: assetType === "cn_stock" ? "long" : draft.trade_direction });
+                      }}
+                    >
+                      <option value="crypto">Crypto</option>
+                      <option value="stock">美股</option>
+                      <option value="cn_stock">A股</option>
+                    </select>
+                    {draft.asset_type !== "cn_stock" ? (
+                      <select className={inputClass} value={draft.trade_direction || "long"} onChange={(event) => patchDraft({ trade_direction: event.target.value })}>
+                        <option value="long">做多</option>
+                        <option value="short">做空</option>
+                      </select>
+                    ) : (
+                      <span className={`${pillClass} flex items-center justify-center`}>A股默认做多</span>
+                    )}
+                  </div>
                 </div>
                 <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                  <div className="text-sm text-slate-400">AI Decision</div>
+                  <div className="text-sm text-slate-400">AI 给出的风险建议</div>
                   <div className="mt-2 text-3xl font-semibold text-white">{decisionIcon(draft.decision)} {draft.decision}</div>
                 </div>
               </div>
 
               <div className="space-y-5">
                 <label className="block">
-                  <div className="mb-2 text-sm font-semibold text-white">为什么想投资？</div>
-                  <textarea className={areaClass} value={draft.notes || ""} onChange={(event) => patchDraft({ notes: event.target.value })} />
+                  <div className="mb-2 text-sm font-semibold text-white">1. 今天为什么想到它？</div>
+                  <textarea className={areaClass} value={draft.notes || ""} onChange={(event) => patchDraft({ notes: event.target.value })} placeholder="例如：看到 KOL 提到、朋友推荐、自己研究、价格突然上涨..." />
                 </label>
                 <label className="block">
-                  <div className="mb-2 text-sm font-semibold text-white">我的买入逻辑</div>
-                  <textarea className={areaClass} value={draft.buy_reason || ""} onChange={(event) => patchDraft({ buy_reason: event.target.value })} />
+                  <div className="mb-2 text-sm font-semibold text-white">2. 我的交易逻辑</div>
+                  <textarea className={areaClass} value={draft.buy_reason || ""} onChange={(event) => patchDraft({ buy_reason: event.target.value })} placeholder="如果做多，为什么会上涨？如果做空，为什么会下跌？" />
                 </label>
                 <label className="block">
-                  <div className="mb-2 text-sm font-semibold text-white">最大的风险</div>
-                  <textarea className={areaClass} value={draft.risk_awareness || ""} onChange={(event) => patchDraft({ risk_awareness: event.target.value })} />
+                  <div className="mb-2 text-sm font-semibold text-white">3. 什么情况说明我错了？</div>
+                  <textarea className={areaClass} value={draft.risk_awareness || ""} onChange={(event) => patchDraft({ risk_awareness: event.target.value })} placeholder="写不出这一条，就不要急着下单。" />
                 </label>
                 <label className="block">
-                  <div className="mb-2 text-sm font-semibold text-white">如果亏损</div>
-                  <textarea className={areaClass} value={draft.worst_case_plan || ""} onChange={(event) => patchDraft({ worst_case_plan: event.target.value })} />
+                  <div className="mb-2 text-sm font-semibold text-white">4. 如果亏损，我怎么退出？</div>
+                  <textarea className={areaClass} value={draft.worst_case_plan || ""} onChange={(event) => patchDraft({ worst_case_plan: event.target.value })} placeholder="例如：下跌/上涨到某个比例、跌破某个条件、情绪上头时先停止交易。" />
                 </label>
               </div>
 
@@ -294,6 +379,9 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
                   {scoreBlock("Bias", draft.ai_analysis.bias?.score)}
                   {scoreBlock("Conviction", draft.ai_analysis.conviction?.score)}
                 </div>
+                {(draft.ai_analysis.risk?.score ?? 0) === 0 ? (
+                  <p className="mt-4 text-sm leading-6 text-slate-400">这是一条手动笔记，还没有完整免疫扫描。建议在 Conversation 里跑一次扫描，再回到这里复盘。</p>
+                ) : null}
               </div>
 
               <div className="mt-6 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-5">
@@ -303,8 +391,9 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
 
               <div className="mt-6 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
                 <h3 className="text-lg font-semibold text-white">我的最终决定</h3>
+                <p className="mt-2 text-sm text-slate-400">AI 可以提醒风险，但最终决定属于你。写下来，之后才有东西可以复盘。</p>
                 <div className="mt-3 flex flex-wrap gap-3">
-                  {["Buy", "Wait", "Don't Buy"].map((decision) => (
+                  {decisionOptions(draft.trade_direction).map((decision) => (
                     <label key={decision} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-slate-200">
                       <input
                         type="radio"
@@ -318,12 +407,12 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
               </div>
 
               <details className="mt-6 rounded-lg border border-slate-800 bg-slate-900/60 p-5" open={reviewOpen} onToggle={(event) => setReviewOpen(event.currentTarget.open)}>
-                <summary className="cursor-pointer text-lg font-semibold text-white">Review</summary>
+                <summary className="cursor-pointer text-lg font-semibold text-white">复盘：结果发生后再打开</summary>
                 <textarea
                   className={`${areaClass} mt-4`}
                   value={reviewText}
                   onChange={(event) => setReviewText(event.target.value)}
-                  placeholder="今天结果如何？"
+                  placeholder="结果如何？我当时哪里想错了？有没有违反自己的规则？"
                 />
                 <button onClick={submitReview} className="mt-3 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950">
                   Generate Review
