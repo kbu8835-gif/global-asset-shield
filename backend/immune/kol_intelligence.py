@@ -1,17 +1,29 @@
 import json
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from database import get_connection, init_db
+from scanner.cn_stock import scan_cn_stock
 from scanner.crypto import scan_crypto
+from scanner.historical import historical_roi
 from scanner.stock import scan_stock
 from scanner.utils import clamp_score
-from schemas import KOLCall, KOLCallCreate, KOLCallUpdate, KOLDependencyResponse, KOLProfile, KOLProfileCreate, KOLProfileUpdate
+from schemas import KOLBatchCaptureRequest, KOLCall, KOLCallCreate, KOLCallUpdate, KOLCaptureRequest, KOLDependencyResponse, KOLProfile, KOLProfileCreate, KOLProfileUpdate
 
 
 KOL_KEYWORDS = ["KOL", "kol", "博主", "大V", "老师", "群里", "朋友推荐", "喊单", "推特", "Twitter", "x.com", "YouTube", "Telegram"]
 FOMO_WORDS = ["100x", "10x", "moon", "last chance", "never sell", "暴富", "财富自由", "起飞", "梭哈"]
+AUTHORITY_WORDS = ["KOL", "kol", "博主", "大V", "老师", "群里", "喊单", "alpha", "insider"]
+LOTTERY_WORDS = ["100x", "10x", "moon", "暴富", "财富自由", "翻倍", "百倍"]
+BUY_WORDS = ["buy", "long", "accumulate", "ape", "上车", "买", "加仓", "冲"]
+SELL_WORDS = ["sell", "short", "dump", "卖", "做空", "清仓"]
+WARNING_WORDS = ["avoid", "warning", "risk", "别买", "小心", "危险"]
+ASSET_STOPWORDS = {
+    "KOL", "FOMO", "BUY", "SELL", "HOLD", "LONG", "SHORT", "MOON", "LAST", "CHANCE",
+    "AI", "ROI", "USD", "USDT",
+}
 
 
 def _now() -> str:
@@ -46,17 +58,103 @@ def extract_kol_signals_from_text(text: str) -> Dict[str, Any]:
     haystack = text or ""
     kol_detected = any(word.lower() in haystack.lower() for word in KOL_KEYWORDS)
     fomo = [word for word in FOMO_WORDS if word.lower() in haystack.lower()]
+    lottery = [word for word in LOTTERY_WORDS if word.lower() in haystack.lower()]
+    authority = [word for word in AUTHORITY_WORDS if word.lower() in haystack.lower()]
+    emotions = []
+    biases = []
+    if fomo:
+        emotions.append("FOMO")
+    if authority or kol_detected:
+        biases.append("Authority Bias")
+    if lottery:
+        biases.append("Lottery Bias")
     return {
         "kol_detected": kol_detected,
-        "emotion_tags": ["FOMO"] if fomo else [],
-        "bias_tags": ["Authority Bias"] if kol_detected else [],
+        "emotion_tags": emotions,
+        "bias_tags": biases,
         "fomo_words": fomo,
+        "lottery_words": lottery,
+        "authority_words": authority,
+    }
+
+
+def infer_asset_from_call_text(text: str) -> str:
+    haystack = text or ""
+    cashtag = re.search(r"\$([A-Za-z][A-Za-z0-9]{1,12})\b", haystack)
+    if cashtag:
+        return cashtag.group(1).upper()
+    words = re.findall(r"\b[A-Z][A-Z0-9]{1,12}\b", haystack)
+    for word in words:
+        if word not in ASSET_STOPWORDS:
+            return word.upper()
+    return "UNKNOWN"
+
+
+def infer_call_type(text: str) -> str:
+    lowered = (text or "").lower()
+    if any(word.lower() in lowered for word in WARNING_WORDS):
+        return "warning"
+    if any(word.lower() in lowered for word in SELL_WORDS):
+        return "sell"
+    if any(word.lower() in lowered for word in LOTTERY_WORDS):
+        return "moonshot"
+    if any(word.lower() in lowered for word in BUY_WORDS):
+        return "buy"
+    return "unknown"
+
+
+def infer_time_horizon(text: str) -> str:
+    lowered = (text or "").lower()
+    if any(word in lowered for word in ["today", "24h", "短线", "今晚", "马上"]):
+        return "short"
+    if any(word in lowered for word in ["month", "30d", "swing", "波段"]):
+        return "medium"
+    if any(word in lowered for word in ["cycle", "long term", "长期", "周期"]):
+        return "long"
+    return "unknown"
+
+
+def _parse_history_line(line: str) -> Optional[Dict[str, Any]]:
+    cleaned = line.strip()
+    if not cleaned:
+        return None
+    date_match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}(?::\d{2})?))?\s+(.*)$", cleaned)
+    call_time = None
+    body = cleaned
+    if date_match:
+        time_part = date_match.group(2) or "00:00:00"
+        if len(time_part) == 5:
+            time_part = f"{time_part}:00"
+        call_time = f"{date_match.group(1)}T{time_part}+00:00"
+        body = date_match.group(3).strip()
+
+    asset = infer_asset_from_call_text(body)
+    price = None
+    text_after_asset = body
+    price_match = re.search(r"(?:\$?[A-Z][A-Z0-9]{1,12}\s+)([0-9]+(?:\.[0-9]+)?)\b(.*)$", body)
+    if price_match:
+        try:
+            price = float(price_match.group(1))
+            text_after_asset = f"{asset} {price_match.group(2).strip()}".strip()
+        except ValueError:
+            price = None
+
+    return {
+        "asset": asset,
+        "call_price": price,
+        "call_time": call_time,
+        "call_text": text_after_asset or body,
     }
 
 
 def _current_price(asset: str, asset_type: str) -> Optional[float]:
     try:
-        scan = scan_crypto(asset) if asset_type == "crypto" else scan_stock(asset)
+        if asset_type == "crypto":
+            scan = scan_crypto(asset)
+        elif asset_type == "cn_stock":
+            scan = scan_cn_stock(asset)
+        else:
+            scan = scan_stock(asset)
         raw = scan.raw_data
         value = raw.get("price_usd") or raw.get("price")
         return float(value) if value not in (None, "") else None
@@ -73,6 +171,16 @@ def calculate_call_performance(data: Dict[str, Any]) -> Dict[str, Any]:
     data["emotion_tags"] = json.dumps(signals["emotion_tags"], ensure_ascii=False)
     data["bias_tags"] = json.dumps(signals["bias_tags"], ensure_ascii=False)
     return data
+
+
+def _merge_json_tags(raw_tags: Optional[str], tag: str) -> str:
+    try:
+        tags = json.loads(raw_tags or "[]")
+    except Exception:
+        tags = []
+    if tag not in tags:
+        tags.append(tag)
+    return json.dumps(tags, ensure_ascii=False)
 
 
 def create_kol_profile(payload: KOLProfileCreate, user_id: int) -> KOLProfile:
@@ -133,11 +241,11 @@ def create_kol_call(payload: KOLCallCreate, user_id: int) -> KOLCall:
     init_db()
     now = _now()
     data = payload.model_dump()
-    if data.get("current_price") is None:
+    if data.get("current_price") is None and data.get("source") != "manual_history":
         data["current_price"] = _current_price(data["asset"], data.get("asset_type") or "crypto")
     data = calculate_call_performance(data)
-    if data.get("kol_id") and "Authority Bias" not in (data.get("bias_tags") or ""):
-        data["bias_tags"] = json.dumps(["Authority Bias"], ensure_ascii=False)
+    if data.get("kol_id"):
+        data["bias_tags"] = _merge_json_tags(data.get("bias_tags"), "Authority Bias")
     if data.get("kol_id") and not data.get("kol_name"):
         profile = get_kol_profile(data["kol_id"], user_id)
         data["kol_name"] = profile.name if profile else None
@@ -167,6 +275,161 @@ def create_kol_call(payload: KOLCallCreate, user_id: int) -> KOLCall:
     if call and call.kol_id:
         recalculate_kol_profile_stats(call.kol_id, user_id)
     return call
+
+
+def capture_kol_call(payload: KOLCaptureRequest, user_id: int) -> KOLCall:
+    text = payload.call_text.strip()
+    asset = (payload.asset or infer_asset_from_call_text(text)).upper()
+    call_type = infer_call_type(text)
+    horizon = payload.time_horizon or infer_time_horizon(text)
+    return create_kol_call(
+        KOLCallCreate(
+            kol_id=payload.kol_id,
+            kol_name=payload.kol_name,
+            asset=asset,
+            asset_type=payload.asset_type,
+            call_price=payload.call_price,
+            current_price=payload.current_price,
+            source="manual",
+            call_text=text,
+            call_type=call_type,
+            time_horizon=horizon,
+            status="open",
+        ),
+        user_id,
+    )
+
+
+def capture_kol_calls_batch(payload: KOLBatchCaptureRequest, user_id: int) -> Dict[str, Any]:
+    created: List[KOLCall] = []
+    skipped: List[str] = []
+    for line in payload.text.splitlines():
+        parsed = _parse_history_line(line)
+        if not parsed:
+            continue
+        if parsed["asset"] == "UNKNOWN":
+            skipped.append(line)
+            continue
+        call = create_kol_call(
+            KOLCallCreate(
+                kol_id=payload.kol_id,
+                kol_name=payload.kol_name,
+                asset=parsed["asset"],
+                asset_type=payload.asset_type,
+                call_time=parsed["call_time"],
+                call_price=parsed["call_price"],
+                source="manual_history",
+                call_text=parsed["call_text"],
+                call_type=infer_call_type(parsed["call_text"]),
+                time_horizon=infer_time_horizon(parsed["call_text"]),
+                status="open",
+            ),
+            user_id,
+        )
+        created.append(call)
+
+    profile = build_kol_behavior_profile(payload.kol_id, user_id) if payload.kol_id else build_kol_behavior_profile_from_calls(created)
+    return {
+        "created_count": len(created),
+        "skipped_count": len(skipped),
+        "skipped_lines": skipped,
+        "calls": [call.model_dump() for call in created],
+        "kol_risk_profile": profile,
+        "summary": profile["summary"],
+    }
+
+
+def _json_list(raw: Optional[str]) -> List[str]:
+    try:
+        value = json.loads(raw or "[]")
+        return value if isinstance(value, list) else []
+    except Exception:
+        return []
+
+
+def _mean(values: List[float]) -> float:
+    return sum(values) / len(values) if values else 0
+
+
+def build_kol_behavior_profile_from_calls(calls: List[KOLCall]) -> Dict[str, Any]:
+    total = len(calls)
+    if total == 0:
+        return {
+            "profile_type": "No Record",
+            "leek_risk_score": 0,
+            "high_emotion_ratio": 0,
+            "win_rate": 0,
+            "average_roi": 0,
+            "red_flags": [],
+            "summary": "还没有历史喊单，不能判断这个 KOL 的行为模式。",
+        }
+
+    fomo_count = sum(1 for call in calls if "FOMO" in _json_list(call.emotion_tags))
+    lottery_count = sum(1 for call in calls if "Lottery Bias" in _json_list(call.bias_tags))
+    missing_price_count = sum(1 for call in calls if call.call_price is None)
+    roi_values = [float(call.current_roi) for call in calls if call.current_roi is not None]
+    completed = [value for value in roi_values]
+    wins = sum(1 for value in completed if value > 0)
+    losses = sum(1 for value in completed if value <= 0)
+    avg_roi = _mean(roi_values)
+    high_emotion_ratio = (fomo_count + lottery_count) / max(total, 1) * 100
+    win_rate = wins / len(completed) * 100 if completed else 0
+
+    score = 0
+    red_flags: List[str] = []
+    if high_emotion_ratio >= 50:
+        score += 30
+        red_flags.append("高情绪喊单比例偏高")
+    if completed and win_rate < 40:
+        score += 25
+        red_flags.append("历史胜率偏低")
+    if roi_values and avg_roi < 0:
+        score += 20
+        red_flags.append("平均 ROI 为负")
+    if missing_price_count / total > 0.5:
+        score += 15
+        red_flags.append("多数喊单没有记录入场价格")
+    if total >= 5 and high_emotion_ratio >= 60:
+        score += 10
+        red_flags.append("高频叙事动员，容易放大用户冲动")
+    score = clamp_score(score)
+
+    if score >= 75:
+        profile_type = "Pump Risk"
+    elif high_emotion_ratio >= 55:
+        profile_type = "FOMO Promoter"
+    elif completed and win_rate >= 60 and avg_roi > 0:
+        profile_type = "Research Analyst"
+    elif completed:
+        profile_type = "Mixed Record"
+    else:
+        profile_type = "Narrative Chaser"
+
+    if profile_type == "Pump Risk":
+        summary = f"这个 KOL 过去 {total} 次记录里，高情绪喊单比例 {high_emotion_ratio:.0f}%，胜率 {win_rate:.0f}%。这不是稳定研究，更像情绪动员。"
+    elif profile_type == "Research Analyst":
+        summary = f"这个 KOL 过去 {total} 次记录里，胜率 {win_rate:.0f}%，平均 ROI {avg_roi:.2f}%。可以参考观点，但仍不能替代你的退出计划。"
+    else:
+        summary = f"这个 KOL 过去 {total} 次记录里，高情绪喊单比例 {high_emotion_ratio:.0f}%，平均 ROI {avg_roi:.2f}%。观点可以看，但不要把它当买入理由。"
+
+    if score >= 60:
+        summary += " 疑似割韭菜风险较高：真正的问题不是他会不会喊对，而是他是否在制造你的冲动。"
+
+    return {
+        "profile_type": profile_type,
+        "leek_risk_score": score,
+        "high_emotion_ratio": round(high_emotion_ratio, 2),
+        "win_rate": round(win_rate, 2),
+        "average_roi": round(avg_roi, 2),
+        "red_flags": red_flags,
+        "summary": summary,
+    }
+
+
+def build_kol_behavior_profile(kol_id: Optional[int], user_id: int) -> Dict[str, Any]:
+    if not kol_id:
+        return build_kol_behavior_profile_from_calls([])
+    return build_kol_behavior_profile_from_calls(list_kol_calls(user_id, kol_id))
 
 
 def list_kol_calls(user_id: int, kol_id: Optional[int] = None) -> List[KOLCall]:
@@ -241,9 +504,19 @@ def refresh_kol_call(call_id: int, user_id: int) -> Optional[KOLCall]:
             except Exception:
                 age_days = 0
             if age_days >= 7 and call.roi_7d is None:
-                data["roi_7d"] = current_roi
+                roi_7d = historical_roi(call.asset, call.asset_type, call.call_price, call.call_time, 7)
+                data["roi_7d"] = roi_7d if roi_7d is not None else current_roi
             if age_days >= 30 and call.roi_30d is None:
-                data["roi_30d"] = current_roi
+                roi_30d = historical_roi(call.asset, call.asset_type, call.call_price, call.call_time, 30)
+                data["roi_30d"] = roi_30d if roi_30d is not None else current_roi
+    if call.roi_7d is None:
+        roi_7d = historical_roi(call.asset, call.asset_type, call.call_price, call.call_time, 7)
+        if roi_7d is not None:
+            data["roi_7d"] = roi_7d
+    if call.roi_30d is None:
+        roi_30d = historical_roi(call.asset, call.asset_type, call.call_price, call.call_time, 30)
+        if roi_30d is not None:
+            data["roi_30d"] = roi_30d
     data["status"] = "open"
     return update_kol_call(call_id, KOLCallUpdate(**data), user_id)
 

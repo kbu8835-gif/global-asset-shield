@@ -79,6 +79,8 @@ class ImmuneReportResponse(BaseModel):
     devil_advocate: Dict[str, Any]
     regret_simulation: Dict[str, Any]
     conviction_score: Dict[str, Any]
+    munger_lens: Optional[Dict[str, Any]] = None
+    ai_coach: Optional[Dict[str, Any]] = None
     final_decision: str
     decision_reason: str
     position_advice: str
@@ -182,6 +184,24 @@ class KOLCallCreate(BaseModel):
     max_drawdown: Optional[float] = None
 
 
+class KOLCaptureRequest(BaseModel):
+    call_text: str
+    kol_id: Optional[int] = None
+    kol_name: Optional[str] = None
+    asset: Optional[str] = None
+    asset_type: str = "crypto"
+    call_price: Optional[float] = None
+    current_price: Optional[float] = None
+    time_horizon: Optional[str] = None
+
+
+class KOLBatchCaptureRequest(BaseModel):
+    text: str
+    kol_id: Optional[int] = None
+    kol_name: Optional[str] = None
+    asset_type: str = "crypto"
+
+
 class KOLCallUpdate(BaseModel):
     kol_id: Optional[int] = None
     kol_name: Optional[str] = None
@@ -252,6 +272,69 @@ class ReviewResponse(BaseModel):
     lesson: str
     next_time_rule: str
     review_status: str
+
+
+class InvestmentJournalCreateRequest(BaseModel):
+    user_id: str
+    asset_symbol: str
+    asset_type: str
+    action: str
+    reason: str
+    emotion_tag: Optional[str] = None
+    risk_score: int = Field(default=0, ge=0, le=100)
+    ai_advice: str
+    user_decision: str
+
+
+class InvestmentJournalCreateResponse(BaseModel):
+    journal_entry_id: int
+    behavior_risk_score: int = Field(ge=0, le=100)
+    ai_summary: str
+
+
+class InvestmentJournalEntry(BaseModel):
+    id: int
+    user_id: str
+    asset_symbol: str
+    asset_type: str
+    action: Optional[str] = None
+    reason: Optional[str] = None
+    emotion_tag: Optional[str] = None
+    risk_score: int = 0
+    behavior_risk_score: int = 0
+    ai_advice: Optional[str] = None
+    user_decision: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class InvestmentOutcomeRequest(BaseModel):
+    journal_entry_id: int
+    outcome_7d: Optional[str] = None
+    outcome_30d: Optional[str] = None
+    outcome_90d: Optional[str] = None
+    user_feedback: Optional[str] = None
+    ai_was_right: bool = False
+
+
+class InvestmentDNAProfile(BaseModel):
+    fomo_score: int = Field(ge=0, le=100)
+    discipline_score: int = Field(ge=0, le=100)
+    patience_score: int = Field(ge=0, le=100)
+    research_score: int = Field(ge=0, le=100)
+    risk_control_score: int = Field(ge=0, le=100)
+    kol_dependency_score: int = Field(ge=0, le=100)
+
+
+class InvestmentHealthProfile(BaseModel):
+    health_score: int = Field(ge=0, le=100)
+    behavior_risk_score: int = Field(ge=0, le=100)
+    summary: str
+
+
+class InvestmentOutcomeResponse(BaseModel):
+    updated_dna: InvestmentDNAProfile
+    updated_health_score: int = Field(ge=0, le=100)
+    behavior_summary: str
 
 
 class NotebookCreate(BaseModel):

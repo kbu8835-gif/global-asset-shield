@@ -5,6 +5,8 @@ from immune.devil import build_devil_advocate
 from immune.emotion import scan_emotion
 from immune.journal import save_report
 from immune.kol_intelligence import build_kol_risk_summary, calculate_user_kol_dependency
+from immune.llm import build_ai_coach
+from immune.munger import build_munger_lens
 from immune.regret import simulate_regret
 from immune.risk import run_risk_scan
 from schemas import ImmuneReportRequest, ImmuneReportResponse
@@ -34,6 +36,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
     devil = build_devil_advocate(asset, payload.asset_type, risk_scan, emotion_scan, bias_detection)
     regret = simulate_regret(asset, emotion_scan["emotion_score"], bias_detection, payload.position_size)
     conviction = build_conviction_score(payload)
+    munger_lens = build_munger_lens(payload, risk_scan, emotion_scan, bias_detection, conviction, kol_risk_scan)
     decision = make_decision(
         risk_scan["risk_score"],
         emotion_scan["emotion_score"],
@@ -58,6 +61,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
         "devil_advocate": devil,
         "regret_simulation": regret,
         "conviction_score": conviction,
+        "munger_lens": munger_lens,
         "final_decision": decision["final_decision"],
         "decision_reason": decision["decision_reason"],
         "position_advice": decision["position_advice"],
@@ -65,6 +69,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
         "summary": summary,
         "kol_risk_scan": kol_risk_scan,
     }
+    report["ai_coach"] = build_ai_coach(payload, report, user_id)
 
     report_id = save_report(payload, report, user_id)
     report["report_id"] = report_id

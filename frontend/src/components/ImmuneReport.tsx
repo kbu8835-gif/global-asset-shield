@@ -33,6 +33,167 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function formatNumber(value: unknown) {
+  const number = Number(value);
+  if (value === null || value === undefined || Number.isNaN(number)) return "未知";
+  return number.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+function MarketData({ rawData, assetType }: { rawData: Record<string, any>; assetType: string }) {
+  if (!rawData) return null;
+  const isCrypto = assetType === "crypto";
+  const isCnStock = assetType === "cn_stock";
+  const rows = isCrypto
+    ? [
+        ["名称", rawData.name || rawData.symbol],
+        ["链 / DEX", [rawData.chain, rawData.dex].filter(Boolean).join(" / ") || "未知"],
+        ["价格 USD", rawData.price_usd ? `$${rawData.price_usd}` : "未知"],
+        ["流动性 USD", `$${formatNumber(rawData.liquidity)}`],
+        ["FDV", `$${formatNumber(rawData.fdv)}`],
+        ["24h 成交量", `$${formatNumber(rawData.volume24h)}`],
+      ]
+    : isCnStock
+      ? [
+          ["名称", rawData.name || rawData.symbol],
+          ["价格", rawData.price ? `¥${formatNumber(rawData.price)}` : "未知"],
+          ["总市值", rawData.market_cap ? `¥${formatNumber(rawData.market_cap)}` : "未知"],
+          ["涨跌幅", rawData.day_change_percent !== null && rawData.day_change_percent !== undefined ? `${formatNumber(rawData.day_change_percent)}%` : "未知"],
+          ["换手率", rawData.turnover_rate !== null && rawData.turnover_rate !== undefined ? `${formatNumber(rawData.turnover_rate)}%` : "未知"],
+          ["PE", formatNumber(rawData.pe)],
+        ]
+      : [
+          ["名称", rawData.short_name || rawData.symbol],
+          ["价格", rawData.price ? `$${formatNumber(rawData.price)}` : "未知"],
+          ["市值", rawData.market_cap ? `$${formatNumber(rawData.market_cap)}` : "未知"],
+          ["单日涨跌幅", rawData.day_change_percent !== null && rawData.day_change_percent !== undefined ? `${formatNumber(rawData.day_change_percent)}%` : "未知"],
+          ["成交量", formatNumber(rawData.volume)],
+          ["PE", formatNumber(rawData.pe)],
+          ["营收增长", rawData.revenue_growth !== null && rawData.revenue_growth !== undefined ? `${formatNumber(Number(rawData.revenue_growth) * 100)}%` : "未知"],
+          ["利润率", rawData.profit_margin !== null && rawData.profit_margin !== undefined ? `${formatNumber(Number(rawData.profit_margin) * 100)}%` : "未知"],
+          ["Debt/Equity", formatNumber(rawData.debt_to_equity)],
+          ["自由现金流", rawData.free_cash_flow ? `$${formatNumber(rawData.free_cash_flow)}` : "未知"],
+          ["分析师共识", rawData.recommendation_key || "未知"],
+          ["新闻风险", Array.isArray(rawData.news_risk_keywords) && rawData.news_risk_keywords.length ? rawData.news_risk_keywords.join(", ") : "未发现"],
+        ];
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-700 bg-slate-950/60 p-4">
+      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+        <div className="font-semibold text-white">行情资料</div>
+        {rawData.fallback_mock ? (
+          <span className="rounded-full border border-amber-300/40 px-3 py-1 text-xs text-amber-100">Fallback mock，未取得实时数据</span>
+        ) : (
+          <span className="rounded-full border border-emerald-300/40 px-3 py-1 text-xs text-emerald-100">已读取外部行情</span>
+        )}
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2">
+            <div className="text-xs text-slate-500">{label}</div>
+            <div className="mt-1 break-words font-semibold text-slate-100">{value || "未知"}</div>
+          </div>
+        ))}
+      </div>
+      {rawData.pair_url ? (
+        <a className="mt-3 inline-flex text-sm font-semibold text-cyan-300 hover:text-cyan-100" href={rawData.pair_url} target="_blank" rel="noreferrer">
+          打开 DexScreener 交易对
+        </a>
+      ) : null}
+      {rawData.security_summary ? (
+        <div className="mt-4 rounded-lg border border-rose-300/20 bg-rose-400/10 p-3">
+          <div className="font-semibold text-rose-50">GoPlus 合约安全</div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {[
+              ["蜜罐", rawData.security_summary.is_honeypot ? "是" : "否"],
+              ["黑名单", rawData.security_summary.is_blacklisted ? "是" : "否"],
+              ["可增发", rawData.security_summary.is_mintable ? "是" : "否"],
+              ["代理合约", rawData.security_summary.is_proxy ? "是" : "否"],
+              ["买入税", `${rawData.security_summary.buy_tax_percent}%`],
+              ["卖出税", `${rawData.security_summary.sell_tax_percent}%`],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-md bg-slate-950/50 px-3 py-2">
+                <span className="text-slate-400">{label}: </span>
+                <span className="font-semibold text-white">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MungerLens({ lens }: { lens: any }) {
+  if (!lens) return null;
+  return (
+    <Section title="Munger Lens">
+      <div className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-4">
+        <div className="text-xs uppercase tracking-[0.18em] text-amber-200">反愚蠢检查器</div>
+        <div className="mt-2 text-2xl font-black text-white">{lens.munger_verdict}</div>
+        <p className="mt-3 text-amber-50">{lens.one_sentence}</p>
+      </div>
+      <div className="mt-4 space-y-4">
+        <div>
+          <div className="font-semibold text-white">逆向思考</div>
+          <p className="mt-1 text-slate-400">{lens.inversion?.question}</p>
+          <ul className="mt-2 space-y-2">
+            {listItems(lens.inversion?.failure_paths).map((item, index) => <li key={index}>- {item}</li>)}
+          </ul>
+        </div>
+        <div>
+          <div className="font-semibold text-white">能力圈</div>
+          <p className="mt-1">{lens.circle_of_competence}</p>
+        </div>
+        <div>
+          <div className="font-semibold text-white">激励机制</div>
+          <p className="mt-1">{lens.incentive_check}</p>
+        </div>
+        <div>
+          <div className="font-semibold text-white">Lollapalooza 效应</div>
+          <ul className="mt-2 space-y-2">
+            {listItems(lens.lollapalooza_effect).map((item, index) => <li key={index}>- {item}</li>)}
+          </ul>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+          <div className="font-semibold text-white">安全边际</div>
+          <p className="mt-1 text-slate-300">{lens.margin_of_safety}</p>
+          {lens.too_hard_pile ? <p className="mt-2 text-amber-100">这笔交易应该先进入 Too Hard 篮子。</p> : null}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function AiCoach({ coach }: { coach: any }) {
+  if (!coach) return null;
+  const sourceLabel = coach.source === "deepseek" ? "DeepSeek AI" : coach.source === "limit_exceeded" ? "规则版 / 今日额度已用完" : "规则版 fallback";
+  return (
+    <Section title="AI Coach">
+      <div className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
+        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+          <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">对话式投资免疫教练</div>
+          <span className="rounded-full border border-cyan-200/30 px-3 py-1 text-xs text-cyan-100">{sourceLabel}</span>
+        </div>
+        <p className="mt-3 text-lg font-semibold leading-8 text-white">{coach.coach_message}</p>
+      </div>
+      <div className="mt-4 space-y-4">
+        <div>
+          <div className="font-semibold text-white">行为模式</div>
+          <p className="mt-1 text-slate-300">{coach.behavior_pattern}</p>
+        </div>
+        <div>
+          <div className="font-semibold text-white">下一步动作</div>
+          <p className="mt-1 text-amber-100">{coach.next_action}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-400">
+          {coach.cost_control}
+          {typeof coach.remaining === "number" ? <span> 今日剩余额度：{coach.remaining}/{coach.daily_limit}</span> : null}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export default function ImmuneReport({ report }: ImmuneReportProps) {
   if (!report) {
     return (
@@ -78,6 +239,7 @@ export default function ImmuneReport({ report }: ImmuneReportProps) {
       <div className="grid gap-5 lg:grid-cols-2">
         <Section title="A. Risk Scan">
           <p className="font-semibold text-white">{report.risk_scan?.risk_score} / {report.risk_scan?.risk_level}</p>
+          <MarketData rawData={report.risk_scan?.raw_data} assetType={report.asset_type} />
           <ul className="mt-3 space-y-2">
             {listItems(report.risk_scan?.risk_reasons).map((item, index) => <li key={index}>- {item}</li>)}
           </ul>
@@ -124,8 +286,9 @@ export default function ImmuneReport({ report }: ImmuneReportProps) {
           <p className="mt-4 font-semibold text-cyan-100">Improvement Questions</p>
           <ul className="mt-2 space-y-2">{listItems(report.conviction_score?.improvement_questions).map((item, index) => <li key={index}>- {item}</li>)}</ul>
         </Section>
+        <AiCoach coach={report.ai_coach} />
+        <MungerLens lens={report.munger_lens} />
       </div>
     </section>
   );
 }
-

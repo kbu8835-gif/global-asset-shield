@@ -224,6 +224,78 @@ def init_db() -> None:
         )
         _ensure_column(conn, "kol_calls", "user_id", "INTEGER")
         conn.execute("UPDATE kol_calls SET user_id = ? WHERE user_id IS NULL", (demo_id,))
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS investment_journal_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                asset_symbol TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                action TEXT,
+                reason TEXT,
+                emotion_tag TEXT,
+                risk_score INTEGER DEFAULT 0,
+                behavior_risk_score INTEGER DEFAULT 0,
+                ai_advice TEXT,
+                user_decision TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS investment_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                journal_entry_id INTEGER NOT NULL,
+                outcome_7d TEXT,
+                outcome_30d TEXT,
+                outcome_90d TEXT,
+                user_feedback TEXT,
+                ai_was_right INTEGER DEFAULT 0,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS investment_dna (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT UNIQUE NOT NULL,
+                fomo_score INTEGER DEFAULT 0,
+                discipline_score INTEGER DEFAULT 50,
+                patience_score INTEGER DEFAULT 50,
+                research_score INTEGER DEFAULT 50,
+                risk_control_score INTEGER DEFAULT 50,
+                kol_dependency_score INTEGER DEFAULT 0,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS investment_health (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT UNIQUE NOT NULL,
+                health_score INTEGER DEFAULT 50,
+                behavior_risk_score INTEGER DEFAULT 0,
+                monthly_progress TEXT,
+                avoided_risky_trades INTEGER DEFAULT 0,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS llm_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                usage_date TEXT NOT NULL,
+                feature TEXT NOT NULL,
+                call_count INTEGER DEFAULT 0,
+                updated_at TEXT
+            )
+            """
+        )
         conn.commit()
 
 

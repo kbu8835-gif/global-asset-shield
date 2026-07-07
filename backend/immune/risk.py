@@ -1,4 +1,5 @@
 from scanner.crypto import scan_crypto
+from scanner.cn_stock import scan_cn_stock
 from scanner.stock import scan_stock
 from schemas import ImmuneReportRequest
 
@@ -13,6 +14,8 @@ def run_risk_scan(payload: ImmuneReportRequest) -> dict:
         return _as_dict(scan_crypto(payload.asset))
     if asset_type == "stock":
         return _as_dict(scan_stock(payload.asset))
+    if asset_type == "cn_stock":
+        return _as_dict(scan_cn_stock(payload.asset))
     return {
         "risk_score": 70,
         "risk_level": "高风险",

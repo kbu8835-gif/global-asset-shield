@@ -17,7 +17,7 @@ export type AuthResponse = {
 
 export type ImmuneReportPayload = {
   asset: string;
-  asset_type: "crypto" | "stock";
+  asset_type: "crypto" | "stock" | "cn_stock";
   user_intent?: string;
   user_text?: string;
   buy_reason?: string;
@@ -134,6 +134,8 @@ export type KOLCall = {
   roi_30d?: number | null;
   current_roi?: number | null;
   result_label?: string | null;
+  emotion_tags?: string | null;
+  bias_tags?: string | null;
 };
 
 export type KOLDependency = {
@@ -142,6 +144,93 @@ export type KOLDependency = {
   total_decisions: number;
   top_kol_names: string[];
   summary: string;
+};
+
+export type KOLRiskProfile = {
+  profile_type: string;
+  leek_risk_score: number;
+  high_emotion_ratio: number;
+  win_rate: number;
+  average_roi: number;
+  red_flags: string[];
+  summary: string;
+};
+
+export type InvestmentJournalEntry = {
+  id: number;
+  user_id: string;
+  asset_symbol: string;
+  asset_type: string;
+  action?: string | null;
+  reason?: string | null;
+  emotion_tag?: string | null;
+  risk_score: number;
+  behavior_risk_score: number;
+  ai_advice?: string | null;
+  user_decision?: string | null;
+  created_at?: string | null;
+};
+
+export type InvestmentJournalCreatePayload = {
+  user_id: string;
+  asset_symbol: string;
+  asset_type: string;
+  action: string;
+  reason: string;
+  emotion_tag?: string;
+  risk_score: number;
+  ai_advice: string;
+  user_decision: string;
+};
+
+export type InvestmentJournalCreateResult = {
+  journal_entry_id: number;
+  behavior_risk_score: number;
+  ai_summary: string;
+};
+
+export type InvestmentJournalDNA = {
+  fomo_score: number;
+  discipline_score: number;
+  patience_score: number;
+  research_score: number;
+  risk_control_score: number;
+  kol_dependency_score: number;
+};
+
+export type InvestmentJournalHealth = {
+  health_score: number;
+  behavior_risk_score: number;
+  summary: string;
+};
+
+export type InvestmentOutcomePayload = {
+  journal_entry_id: number;
+  outcome_7d?: string;
+  outcome_30d?: string;
+  outcome_90d?: string;
+  user_feedback?: string;
+  ai_was_right: boolean;
+};
+
+export type InvestmentOutcomeResult = {
+  updated_dna: InvestmentJournalDNA;
+  updated_health_score: number;
+  behavior_summary: string;
+};
+
+export type DataSourceHealth = {
+  name: string;
+  status: string;
+  detail: string;
+  live_data: boolean;
+  fallback_available: boolean;
+};
+
+export type DataHealth = {
+  overall_status: string;
+  summary: string;
+  sources: DataSourceHealth[];
 };
 
 async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
@@ -285,6 +374,35 @@ export function createKolCall(payload: Partial<KOLCall>) {
   return requestJson<KOLCall>("/kol/calls", { method: "POST", body: JSON.stringify(payload) });
 }
 
+export function captureKolCall(payload: {
+  call_text: string;
+  kol_id?: number | null;
+  kol_name?: string | null;
+  asset?: string;
+  asset_type?: string;
+  call_price?: number | null;
+  current_price?: number | null;
+  time_horizon?: string | null;
+}) {
+  return requestJson<KOLCall>("/kol/capture", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function captureKolCallsBatch(payload: {
+  text: string;
+  kol_id?: number | null;
+  kol_name?: string | null;
+  asset_type?: string;
+}) {
+  return requestJson<{ created_count: number; skipped_count: number; skipped_lines: string[]; calls: KOLCall[]; kol_risk_profile: KOLRiskProfile; summary: string }>("/kol/capture/batch", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getKolRiskProfile(id: number) {
+  return requestJson<KOLRiskProfile>(`/kol/profiles/${id}/risk-profile`);
+}
+
 export function updateKolCall(id: number, payload: Partial<KOLCall>) {
   return requestJson<KOLCall>(`/kol/calls/${id}`, { method: "PUT", body: JSON.stringify(payload) });
 }
@@ -299,4 +417,34 @@ export function refreshKolCall(id: number) {
 
 export function getKolDependency() {
   return requestJson<KOLDependency>("/kol/dependency");
+}
+
+export function createInvestmentJournalEntry(payload: InvestmentJournalCreatePayload) {
+  return requestJson<InvestmentJournalCreateResult>("/journal/create", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getInvestmentJournalEntries(userId: string) {
+  return requestJson<InvestmentJournalEntry[]>(`/journal/${encodeURIComponent(userId)}`);
+}
+
+export function submitInvestmentOutcome(payload: InvestmentOutcomePayload) {
+  return requestJson<InvestmentOutcomeResult>("/journal/outcome", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getInvestmentJournalDNA(userId: string) {
+  return requestJson<InvestmentJournalDNA>(`/journal/dna/${encodeURIComponent(userId)}`);
+}
+
+export function getInvestmentJournalHealth(userId: string) {
+  return requestJson<InvestmentJournalHealth>(`/journal/health/${encodeURIComponent(userId)}`);
+}
+
+export function getDataHealth() {
+  return requestJson<DataHealth>("/data/health");
 }

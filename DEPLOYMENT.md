@@ -98,6 +98,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES=10080
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 DEMO_USER_EMAIL=demo@globalassetshield.ai
 DEMO_USER_PASSWORD=demo123456
+LLM_ENABLED=true
+DEEPSEEK_API_KEY=
+DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+LLM_DAILY_LIMIT=20
+LLM_TIMEOUT_SECONDS=12
 ```
 
 Docker PostgreSQL:
@@ -127,6 +133,7 @@ Tables are created automatically on startup:
 - `journal_entries`
 - `kol_profiles`
 - `kol_calls`
+- `llm_usage`
 
 Existing SQLite data remains compatible. In PostgreSQL, the same user isolation rules apply to Journal, Notebook, DNA, KOL Profiles, KOL Calls, and Immune Reports.
 

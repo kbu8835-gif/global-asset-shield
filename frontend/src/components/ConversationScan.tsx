@@ -18,6 +18,11 @@ const intentReasons: Record<string, string> = {
 
 const intentOptions = ["KOL推荐", "朋友推荐", "涨很多了怕踏空", "自己研究", "抄底补仓"];
 const positionOptions = ["5%", "10%", "30%", "50%", "ALL IN"];
+const assetTypeLabels = {
+  crypto: "加密货币",
+  stock: "美股",
+  cn_stock: "A股",
+} as const;
 
 function aiBubble(text: string, active = false) {
   return (
@@ -44,7 +49,7 @@ function userBubble(text?: string) {
 export default function ConversationScan({ loading, onSubmit }: ConversationScanProps) {
   const [step, setStep] = useState<Step>("asset");
   const [asset, setAsset] = useState("PEPE");
-  const [assetType, setAssetType] = useState<"crypto" | "stock">("crypto");
+  const [assetType, setAssetType] = useState<"crypto" | "stock" | "cn_stock">("crypto");
   const [intent, setIntent] = useState("");
   const [positionSize, setPositionSize] = useState("");
   const [worstCasePlan, setWorstCasePlan] = useState("");
@@ -100,11 +105,12 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                 />
                 <select
                   value={assetType}
-                  onChange={(event) => setAssetType(event.target.value as "crypto" | "stock")}
+                  onChange={(event) => setAssetType(event.target.value as "crypto" | "stock" | "cn_stock")}
                   className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
                 >
-                  <option value="crypto">crypto</option>
-                  <option value="stock">stock</option>
+                  <option value="crypto">加密货币</option>
+                  <option value="stock">美股</option>
+                  <option value="cn_stock">A股</option>
                 </select>
                 <button className={chipClass} onClick={() => setStep("intent")}>
                   Next
@@ -115,7 +121,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
 
           {(step !== "asset" || ready) && (
             <>
-              {userBubble(`${assetLabel} / ${assetType}`)}
+              {userBubble(`${assetLabel} / ${assetTypeLabels[assetType]}`)}
               {aiBubble(`Why do you want to buy ${assetLabel}?`, step === "intent")}
               <div className="flex flex-wrap justify-end gap-2">
                 {intentOptions.map((option) => (
@@ -227,4 +233,3 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
     </section>
   );
 }
-

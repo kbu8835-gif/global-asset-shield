@@ -43,6 +43,13 @@ DEMO_EMAIL = os.getenv("DEMO_USER_EMAIL", "demo@globalassetshield.ai")
 DEMO_PASSWORD = os.getenv("DEMO_USER_PASSWORD", "demo123456")
 DEMO_USERNAME = os.getenv("DEMO_USER_USERNAME", "Demo User")
 
+LLM_ENABLED = os.getenv("LLM_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+LLM_DAILY_LIMIT = int(os.getenv("LLM_DAILY_LIMIT", "20"))
+LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "12"))
+
 DEXSCREENER_SEARCH_URL = "https://api.dexscreener.com/latest/dex/search"
 DEXSCREENER_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens"
 

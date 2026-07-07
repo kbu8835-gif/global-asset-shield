@@ -16,9 +16,11 @@ import {
 import AuthPage from "./components/AuthPage";
 import Hero from "./components/Hero";
 import ConversationScan from "./components/ConversationScan";
+import DataHealthPage from "./components/DataHealthPage";
 import ImmuneForm from "./components/ImmuneForm";
 import ImmuneReport from "./components/ImmuneReport";
 import InvestmentDNA from "./components/InvestmentDNA";
+import InvestmentJournalPage from "./components/InvestmentJournalPage";
 import JournalList from "./components/JournalList";
 import KOLIntelligence from "./components/KOLIntelligence";
 import NotebookWorkspace from "./components/NotebookWorkspace";
@@ -40,7 +42,7 @@ const defaultForm: ImmuneReportPayload = {
 export default function App() {
   const scanRef = useRef<HTMLDivElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
-  const [mainView, setMainView] = useState<"conversation" | "notebook" | "kol" | "dna">("conversation");
+  const [mainView, setMainView] = useState<"conversation" | "investmentJournal" | "notebook" | "kol" | "dna" | "data">("conversation");
   const [scanMode, setScanMode] = useState<"conversation" | "advanced">("conversation");
   const [form, setForm] = useState<ImmuneReportPayload>(defaultForm);
   const [report, setReport] = useState<any | null>(null);
@@ -179,14 +181,16 @@ export default function App() {
         <div className="flex flex-wrap gap-2 rounded-lg border border-slate-800 bg-slate-950/80 p-1">
           {[
             ["conversation", "Conversation"],
+            ["investmentJournal", "Journal"],
             ["notebook", "Notebook"],
             ["kol", "KOL"],
             ["dna", "DNA"],
+            ["data", "Data"],
           ].map(([key, label]) => (
             <button
               key={key}
               className={`rounded-md px-4 py-2 text-sm font-semibold ${mainView === key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:text-white"}`}
-              onClick={() => setMainView(key as "conversation" | "notebook" | "kol" | "dna")}
+              onClick={() => setMainView(key as "conversation" | "investmentJournal" | "notebook" | "kol" | "dna" | "data")}
             >
               {label}
             </button>
@@ -230,6 +234,17 @@ export default function App() {
         </>
       ) : null}
 
+      {mainView === "investmentJournal" ? (
+        <>
+          {error ? (
+            <section className="mx-auto max-w-6xl px-5 py-2">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
+            </section>
+          ) : null}
+          <InvestmentJournalPage onError={setError} />
+        </>
+      ) : null}
+
       {mainView === "notebook" ? (
         <>
           {error ? (
@@ -260,6 +275,17 @@ export default function App() {
             </section>
           ) : null}
           <InvestmentDNA dna={dna} loading={loadingDNA} onRefresh={loadDNA} />
+        </>
+      ) : null}
+
+      {mainView === "data" ? (
+        <>
+          {error ? (
+            <section className="mx-auto max-w-6xl px-5 py-2">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
+            </section>
+          ) : null}
+          <DataHealthPage onError={setError} />
         </>
       ) : null}
     </main>

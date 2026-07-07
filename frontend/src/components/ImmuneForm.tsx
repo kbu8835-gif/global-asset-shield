@@ -40,8 +40,9 @@ export default function ImmuneForm({ form, loading, onChange, onSubmit }: Immune
           <label className="block">
             <span className="mb-2 block text-xs font-medium uppercase text-slate-400">Asset Type</span>
             <select className={fieldClass} value={form.asset_type} onChange={(event) => update("asset_type", event.target.value)}>
-              <option value="crypto">crypto</option>
-              <option value="stock">stock</option>
+              <option value="crypto">加密货币</option>
+              <option value="stock">美股</option>
+              <option value="cn_stock">A股</option>
             </select>
           </label>
           <label className="block">
@@ -86,4 +87,3 @@ export default function ImmuneForm({ form, loading, onChange, onSubmit }: Immune
     </section>
   );
 }
-
