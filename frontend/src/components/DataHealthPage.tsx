@@ -23,6 +23,10 @@ function statusLabel(status: string) {
   return labels[status] || status;
 }
 
+function hasStatus(health: DataHealth | null, status: string) {
+  return Boolean(health?.sources.some((source) => source.status === status));
+}
+
 export default function DataHealthPage({ onError }: DataHealthPageProps) {
   const [health, setHealth] = useState<DataHealth | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,6 +76,12 @@ export default function DataHealthPage({ onError }: DataHealthPageProps) {
               </div>
               <p className="max-w-2xl text-slate-300">{health.summary}</p>
             </div>
+          </div>
+        ) : null}
+
+        {hasStatus(health, "needs_balance") ? (
+          <div className="mt-4 rounded-lg border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-50">
+            AI Coach 已接通，但当前模型账户需要余额。系统会自动使用规则版报告，扫描不会中断。
           </div>
         ) : null}
       </div>

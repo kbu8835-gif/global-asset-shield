@@ -24,6 +24,22 @@ function toneForDecision(decision: string): "red" | "yellow" | "green" {
   return "yellow";
 }
 
+function decisionTitle(decision: string) {
+  if (decision.includes("Don't")) return "先不要买";
+  if (decision.includes("Small")) return "只允许小仓位";
+  return "先观察";
+}
+
+function nextActionsForDecision(decision: string): string[] {
+  if (decision.includes("Don't")) {
+    return ["至少等 24 小时再重新扫描一次", "先写清楚失效条件：什么情况证明你错了", "不要用加仓来证明自己没错"];
+  }
+  if (decision.includes("Small")) {
+    return ["仓位控制在 5%-10%", "下单前写好止损和复盘日期", "把这次理由保存到 Notebook，之后对照结果"];
+  }
+  return ["先加入观察清单，不急着下单", "如果一定要试错，仓位不要超过 5%", "等情绪退下来后，再用同样输入重新扫描"];
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-5">
@@ -199,7 +215,7 @@ export default function ImmuneReport({ report }: ImmuneReportProps) {
     return (
       <section className="mx-auto max-w-6xl px-5 py-8">
         <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-8 text-center text-slate-400">
-          Run a scan to see the immune report.
+          先完成一次免疫扫描。系统会把资产风险、情绪冲动、认知偏差和行动建议放在同一份报告里。
         </div>
       </section>
     );
@@ -233,6 +249,18 @@ export default function ImmuneReport({ report }: ImmuneReportProps) {
           <div className="text-sm font-semibold text-white">Position Advice</div>
           <p className="mt-2 text-slate-300">{report.position_advice}</p>
           <p className="mt-2 text-slate-400">{report.decision_reason}</p>
+        </div>
+        <div className="mt-5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
+          <div className="text-sm uppercase tracking-[0.18em] text-cyan-200">What to do next</div>
+          <div className="mt-2 text-2xl font-black text-white">{decisionTitle(report.final_decision)}</div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {nextActionsForDecision(report.final_decision).map((action, index) => (
+              <div key={action} className="rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                <div className="text-xs font-semibold text-cyan-200">Step {index + 1}</div>
+                <p className="mt-2 text-sm leading-6 text-slate-200">{action}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

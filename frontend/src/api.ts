@@ -255,7 +255,16 @@ async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
       window.dispatchEvent(new CustomEvent("auth:expired"));
     }
     const text = await response.text();
-    throw new Error(text || `Request failed with status ${response.status}`);
+    let message = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed.detail === "string") message = parsed.detail;
+      else if (typeof parsed.message === "string") message = parsed.message;
+      else if (Array.isArray(parsed.detail)) message = parsed.detail.map((item: any) => item.msg || JSON.stringify(item)).join("; ");
+    } catch {
+      // Keep the plain text response if the backend did not return JSON.
+    }
+    throw new Error(message || `Request failed with status ${response.status}`);
   }
   return response.json() as Promise<T>;
 }

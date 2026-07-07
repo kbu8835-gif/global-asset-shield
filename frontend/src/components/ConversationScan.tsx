@@ -18,9 +18,11 @@ const intentReasons: Record<string, string> = {
 
 const intentOptions = ["KOL推荐", "朋友推荐", "涨很多了怕踏空", "自己研究", "抄底补仓"];
 const positionOptions = ["5%", "10%", "30%", "50%", "ALL IN"];
+const worstCaseSuggestions = ["跌 15% 就止损", "等 24 小时再决定", "不补仓，先复盘"];
+const riskSuggestions = ["流动性不足", "KOL 喊单情绪过热", "我说不清最大风险"];
 const assetTypeLabels = {
   crypto: "加密货币",
-  stock: "美股",
+  stock: "股票",
   cn_stock: "A股",
 } as const;
 
@@ -89,7 +91,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
         <div className="mb-5">
           <div className="text-sm uppercase tracking-[0.18em] text-cyan-200">Conversation Mode</div>
           <h2 className="mt-2 text-2xl font-semibold text-white">AI 对话式免疫扫描</h2>
-          <p className="mt-2 text-sm text-slate-400">Less form. More agent. The market changes. Your behavior repeats.</p>
+          <p className="mt-2 text-sm text-slate-400">不知道填什么也没关系。用默认 PEPE 跑一遍，就能看到完整免疫报告。</p>
         </div>
 
         <div className="space-y-4">
@@ -109,7 +111,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                   className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
                 >
                   <option value="crypto">加密货币</option>
-                  <option value="stock">美股</option>
+                  <option value="stock">股票</option>
                   <option value="cn_stock">A股</option>
                 </select>
                 <button className={chipClass} onClick={() => setStep("intent")}>
@@ -166,7 +168,20 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
               {userBubble(positionSize)}
               {aiBubble(`If ${assetLabel} drops 40% tomorrow, what will you do?`, step === "worstCase")}
               <div className="flex justify-end">
-                <div className="flex w-full max-w-xl gap-2">
+                <div className="w-full max-w-xl">
+                  <div className="mb-2 flex flex-wrap justify-end gap-2">
+                    {worstCaseSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:border-cyan-300 hover:text-cyan-100"
+                        onClick={() => setWorstCasePlan(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
                   <input
                     value={worstCasePlan}
                     onChange={(event) => setWorstCasePlan(event.target.value)}
@@ -176,6 +191,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                   <button className={chipClass} onClick={() => setStep("risk")} disabled={!worstCasePlan.trim()}>
                     Next
                   </button>
+                  </div>
                 </div>
               </div>
             </>
@@ -186,7 +202,20 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
               {userBubble(worstCasePlan)}
               {aiBubble(`What is the biggest risk of ${assetLabel}?`, step === "risk")}
               <div className="flex justify-end">
-                <div className="flex w-full max-w-xl gap-2">
+                <div className="w-full max-w-xl">
+                  <div className="mb-2 flex flex-wrap justify-end gap-2">
+                    {riskSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:border-cyan-300 hover:text-cyan-100"
+                        onClick={() => setRiskAwareness(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
                   <input
                     value={riskAwareness}
                     onChange={(event) => setRiskAwareness(event.target.value)}
@@ -196,6 +225,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                   <button className={chipClass} onClick={() => setStep("ready")} disabled={!riskAwareness.trim()}>
                     Done
                   </button>
+                  </div>
                 </div>
               </div>
             </>
@@ -226,6 +256,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                   Start Immune Scan
                 </button>
               </div>
+              <p className="text-right text-xs text-slate-500">报告会自动保存到 Journal，并更新你的 Investment DNA。</p>
             </>
           )}
         </div>

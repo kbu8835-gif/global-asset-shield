@@ -17,6 +17,7 @@ import AuthPage from "./components/AuthPage";
 import Hero from "./components/Hero";
 import ConversationScan from "./components/ConversationScan";
 import DataHealthPage from "./components/DataHealthPage";
+import FriendlyError from "./components/FriendlyError";
 import ImmuneForm from "./components/ImmuneForm";
 import ImmuneReport from "./components/ImmuneReport";
 import InvestmentDNA from "./components/InvestmentDNA";
@@ -24,7 +25,9 @@ import InvestmentJournalPage from "./components/InvestmentJournalPage";
 import JournalList from "./components/JournalList";
 import KOLIntelligence from "./components/KOLIntelligence";
 import NotebookWorkspace from "./components/NotebookWorkspace";
+import OnboardingGuide from "./components/OnboardingGuide";
 import ReviewPanel from "./components/ReviewPanel";
+import ScanProgress from "./components/ScanProgress";
 import UserMenu from "./components/UserMenu";
 
 const defaultForm: ImmuneReportPayload = {
@@ -177,6 +180,7 @@ export default function App() {
     <main className="min-h-screen text-slate-100">
       <UserMenu user={user} onLogout={handleLogout} />
       <Hero onStart={() => scanRef.current?.scrollIntoView({ behavior: "smooth" })} />
+      <OnboardingGuide activeView={mainView} onSelectView={setMainView} />
       <section ref={scanRef} className="mx-auto max-w-6xl px-5 pt-2">
         <div className="flex flex-wrap gap-2 rounded-lg border border-slate-800 bg-slate-950/80 p-1">
           {[
@@ -221,11 +225,8 @@ export default function App() {
           ) : (
             <ImmuneForm form={form} loading={loadingReport} onChange={setForm} onSubmit={runScan} />
           )}
-          {error ? (
-            <section className="mx-auto max-w-6xl px-5 py-2">
-              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
-            </section>
-          ) : null}
+          <ScanProgress visible={loadingReport} />
+          <FriendlyError message={error} />
           <div ref={reportRef}>
             <ImmuneReport report={report} />
           </div>
@@ -236,55 +237,35 @@ export default function App() {
 
       {mainView === "investmentJournal" ? (
         <>
-          {error ? (
-            <section className="mx-auto max-w-6xl px-5 py-2">
-              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
-            </section>
-          ) : null}
+          <FriendlyError message={error} />
           <InvestmentJournalPage onError={setError} />
         </>
       ) : null}
 
       {mainView === "notebook" ? (
         <>
-          {error ? (
-            <section className="mx-auto max-w-6xl px-5 py-2">
-              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
-            </section>
-          ) : null}
+          <FriendlyError message={error} />
           <NotebookWorkspace onError={setError} />
         </>
       ) : null}
 
       {mainView === "kol" ? (
         <>
-          {error ? (
-            <section className="mx-auto max-w-6xl px-5 py-2">
-              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
-            </section>
-          ) : null}
+          <FriendlyError message={error} />
           <KOLIntelligence onError={setError} />
         </>
       ) : null}
 
       {mainView === "dna" ? (
         <>
-          {error ? (
-            <section className="mx-auto max-w-6xl px-5 py-2">
-              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
-            </section>
-          ) : null}
+          <FriendlyError message={error} />
           <InvestmentDNA dna={dna} loading={loadingDNA} onRefresh={loadDNA} />
         </>
       ) : null}
 
       {mainView === "data" ? (
         <>
-          {error ? (
-            <section className="mx-auto max-w-6xl px-5 py-2">
-              <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-4 text-red-100">{error}</div>
-            </section>
-          ) : null}
+          <FriendlyError message={error} />
           <DataHealthPage onError={setError} />
         </>
       ) : null}

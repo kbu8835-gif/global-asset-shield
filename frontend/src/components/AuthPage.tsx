@@ -63,6 +63,13 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
           <p className="mt-5 max-w-xl text-base leading-7 text-slate-400">
             登录后，你的 Notebook、Journal、DNA 和 KOL Intelligence 都会和其他用户隔离。你的投资行为模式，只属于你自己。
           </p>
+          <div className="mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
+            {["先对话扫描", "再写投资日记", "最后复盘行为"].map((item) => (
+              <div key={item} className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 text-sm font-semibold text-slate-200">
+                {item}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/85 p-6 shadow-2xl shadow-cyan-950/20">
@@ -71,13 +78,13 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
               className={`flex-1 rounded-md px-4 py-2 text-sm font-semibold ${mode === "login" ? "bg-cyan-300 text-slate-950" : "text-slate-300"}`}
               onClick={() => setMode("login")}
             >
-              Login
+              登录
             </button>
             <button
               className={`flex-1 rounded-md px-4 py-2 text-sm font-semibold ${mode === "register" ? "bg-cyan-300 text-slate-950" : "text-slate-300"}`}
               onClick={() => setMode("register")}
             >
-              Register
+              注册
             </button>
           </div>
 
@@ -96,15 +103,16 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
             disabled={loading}
             className="mt-5 w-full rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60"
           >
-            {loading ? "Working..." : mode === "login" ? "Login" : "Create Account"}
+            {loading ? "处理中..." : mode === "login" ? "登录" : "创建账户"}
           </button>
           <button
             onClick={demoLogin}
             disabled={loading}
             className="mt-3 w-full rounded-lg border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-100 hover:border-cyan-300/60 disabled:opacity-60"
           >
-            Demo Login
+            Demo Login - 直接体验
           </button>
+          <p className="mt-3 text-center text-xs text-slate-500">不用注册，先看完整流程。之后再创建自己的账户。</p>
         </div>
       </section>
     </main>
