@@ -44,6 +44,8 @@ def fallback_ai_coach(payload: ImmuneReportRequest, report: Dict[str, Any]) -> D
     conviction = report.get("conviction_score", {}).get("score", 0)
     emotion_score = report.get("emotion_scan", {}).get("emotion_score", 0)
     bias_score = report.get("bias_detection", {}).get("bias_score", 0)
+    data_confidence = report.get("data_confidence", {}) or {}
+    data_score = int(data_confidence.get("score") or 0)
     kol_detected = bool(report.get("kol_risk_scan"))
 
     if "Don't Buy" in final_decision:
@@ -67,8 +69,20 @@ def fallback_ai_coach(payload: ImmuneReportRequest, report: Dict[str, Any]) -> D
     return {
         "coach_message": coach_message,
         "behavior_pattern": behavior_pattern,
+        "data_confidence_note": _fallback_data_confidence_note(data_score, data_confidence),
         "next_action": "先写下：买入理由、最大亏损、失效条件、仓位上限。写不出来，就不要买。",
     }
+
+
+def _fallback_data_confidence_note(score: int, data_confidence: Dict[str, Any]) -> str:
+    missing = data_confidence.get("missing") or []
+    if score < 25:
+        return "当前数据严重不足。真正的风险不是你错过机会，而是你想在证据不够时下单。"
+    if score < 50:
+        return f"当前数据只够做初筛，缺少 {', '.join(missing[:3]) or '关键字段'}。这不是完整研究。"
+    if score < 75:
+        return "当前数据可以支持初步观察，但还不够支撑重仓或冲动交易。"
+    return "本次关键数据相对完整，但数据完整不等于交易计划完整。"
 
 
 def consume_llm_quota(user_id: int, feature: str) -> Tuple[bool, int]:
@@ -119,7 +133,7 @@ def _call_deepseek(payload: ImmuneReportRequest, report: Dict[str, Any]) -> Dict
                 "content": (
                     "你是 Global Asset Shield 的 AI 投资免疫教练。"
                     "你不预测价格，不迎合用户，不说“自行判断”。"
-                    "你只根据给定 JSON 识别行为风险，并输出严格 JSON。"
+                    "你只根据给定 JSON 识别行为风险和数据置信度，不得编造 JSON 中没有的数据，并输出严格 JSON。"
                     "语气直接、有洞察、像风控教练。"
                 ),
             },
@@ -130,7 +144,7 @@ def _call_deepseek(payload: ImmuneReportRequest, report: Dict[str, Any]) -> Dict
         ],
         "stream": False,
         "temperature": 0.2,
-        "max_tokens": 420,
+        "max_tokens": 520,
         "response_format": {"type": "json_object"},
     }
     response = requests.post(
@@ -147,13 +161,17 @@ def _call_deepseek(payload: ImmuneReportRequest, report: Dict[str, Any]) -> Dict
     return {
         "coach_message": str(parsed.get("coach_message") or "").strip() or "先停手，把计划写清楚再考虑下单。",
         "behavior_pattern": str(parsed.get("behavior_pattern") or "").strip() or "你的行为风险需要先被看见，再谈资产机会。",
+        "data_confidence_note": str(parsed.get("data_confidence_note") or "").strip() or _fallback_data_confidence_note(
+            int((report.get("data_confidence") or {}).get("score") or 0),
+            report.get("data_confidence") or {},
+        ),
         "next_action": str(parsed.get("next_action") or "").strip() or "写下失效条件、仓位上限和复盘日期。",
     }
 
 
 def _compact_context(payload: ImmuneReportRequest, report: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "task": "请输出 JSON，字段为 coach_message, behavior_pattern, next_action。每个字段不超过 80 个中文字符。",
+        "task": "请输出 JSON，字段为 coach_message, behavior_pattern, data_confidence_note, next_action。每个字段不超过 90 个中文字符。不得编造缺失数据。",
         "asset": report.get("asset"),
         "asset_type": report.get("asset_type"),
         "user_input": payload.model_dump(),
@@ -165,6 +183,7 @@ def _compact_context(payload: ImmuneReportRequest, report: Dict[str, Any]) -> Di
             "final_decision": report.get("final_decision"),
         },
         "risk_reasons": report.get("risk_scan", {}).get("risk_reasons", [])[:5],
+        "data_confidence": report.get("data_confidence"),
         "detected_emotions": report.get("emotion_scan", {}).get("detected_emotions", [])[:5],
         "biases": report.get("bias_detection", {}).get("biases", [])[:5],
         "kol_risk_scan": report.get("kol_risk_scan"),

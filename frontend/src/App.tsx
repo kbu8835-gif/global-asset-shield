@@ -49,6 +49,7 @@ export default function App() {
   const [scanMode, setScanMode] = useState<"conversation" | "advanced">("conversation");
   const [form, setForm] = useState<ImmuneReportPayload>(defaultForm);
   const [report, setReport] = useState<any | null>(null);
+  const [notebookFocusId, setNotebookFocusId] = useState<number | null>(null);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [dna, setDna] = useState<InvestmentDNAType | null>(null);
   const [review, setReview] = useState<any | null>(null);
@@ -116,6 +117,12 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to review journal");
     }
+  };
+
+  const openReportNotebook = (id: number) => {
+    setNotebookFocusId(id);
+    setMainView("notebook");
+    window.setTimeout(() => scanRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
 
   const handleAuthenticated = (nextUser: User) => {
@@ -228,7 +235,7 @@ export default function App() {
           <ScanProgress visible={loadingReport} />
           <FriendlyError message={error} />
           <div ref={reportRef}>
-            <ImmuneReport report={report} />
+            <ImmuneReport report={report} onOpenNotebook={openReportNotebook} />
           </div>
           <JournalList journal={journal} loading={loadingJournal} onRefresh={loadJournal} onReview={handleReview} />
           <ReviewPanel review={review} />
@@ -245,7 +252,7 @@ export default function App() {
       {mainView === "notebook" ? (
         <>
           <FriendlyError message={error} />
-          <NotebookWorkspace onError={setError} />
+          <NotebookWorkspace onError={setError} focusNotebookId={notebookFocusId} />
         </>
       ) : null}
 

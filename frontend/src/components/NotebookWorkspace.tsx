@@ -11,6 +11,7 @@ import {
 
 type NotebookWorkspaceProps = {
   onError: (message: string) => void;
+  focusNotebookId?: number | null;
 };
 
 const inputClass =
@@ -38,7 +39,7 @@ function scoreBlock(label: string, value?: number) {
   );
 }
 
-export default function NotebookWorkspace({ onError }: NotebookWorkspaceProps) {
+export default function NotebookWorkspace({ onError, focusNotebookId }: NotebookWorkspaceProps) {
   const [items, setItems] = useState<NotebookListItem[]>([]);
   const [selected, setSelected] = useState<NotebookDetail | null>(null);
   const [draft, setDraft] = useState<NotebookDetail | null>(null);
@@ -69,6 +70,11 @@ export default function NotebookWorkspace({ onError }: NotebookWorkspaceProps) {
   useEffect(() => {
     loadList().catch((err) => onError(err instanceof Error ? err.message : "Failed to load notebook"));
   }, []);
+
+  useEffect(() => {
+    if (!focusNotebookId) return;
+    openNotebook(focusNotebookId).catch((err) => onError(err instanceof Error ? err.message : "Failed to open notebook"));
+  }, [focusNotebookId]);
 
   useEffect(() => {
     if (!draft || !selected || draft.id !== selected.id) return;
@@ -318,4 +324,3 @@ export default function NotebookWorkspace({ onError }: NotebookWorkspaceProps) {
     </section>
   );
 }
-

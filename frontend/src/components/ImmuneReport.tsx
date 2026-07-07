@@ -2,6 +2,7 @@ import ScoreCard from "./ScoreCard";
 
 type ImmuneReportProps = {
   report: any | null;
+  onOpenNotebook?: (id: number) => void;
 };
 
 function listItems(items: unknown): string[] {
@@ -38,6 +39,13 @@ function nextActionsForDecision(decision: string): string[] {
     return ["仓位控制在 5%-10%", "下单前写好止损和复盘日期", "把这次理由保存到 Notebook，之后对照结果"];
   }
   return ["先加入观察清单，不急着下单", "如果一定要试错，仓位不要超过 5%", "等情绪退下来后，再用同样输入重新扫描"];
+}
+
+function confidenceTone(level?: string) {
+  if ((level || "").includes("High")) return "border-emerald-300/40 bg-emerald-400/10 text-emerald-50";
+  if ((level || "").includes("Medium")) return "border-cyan-300/40 bg-cyan-400/10 text-cyan-50";
+  if ((level || "").includes("Low")) return "border-amber-300/40 bg-amber-400/10 text-amber-50";
+  return "border-rose-300/40 bg-rose-400/10 text-rose-50";
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -197,6 +205,12 @@ function AiCoach({ coach }: { coach: any }) {
           <div className="font-semibold text-white">行为模式</div>
           <p className="mt-1 text-slate-300">{coach.behavior_pattern}</p>
         </div>
+        {coach.data_confidence_note ? (
+          <div>
+            <div className="font-semibold text-white">数据置信度解释</div>
+            <p className="mt-1 text-slate-300">{coach.data_confidence_note}</p>
+          </div>
+        ) : null}
         <div>
           <div className="font-semibold text-white">下一步动作</div>
           <p className="mt-1 text-amber-100">{coach.next_action}</p>
@@ -210,7 +224,43 @@ function AiCoach({ coach }: { coach: any }) {
   );
 }
 
-export default function ImmuneReport({ report }: ImmuneReportProps) {
+function DataConfidence({ confidence }: { confidence: any }) {
+  if (!confidence) return null;
+  return (
+    <Section title="Data Confidence">
+      <div className={`rounded-lg border p-4 ${confidenceTone(confidence.level)}`}>
+        <div className="text-xs uppercase tracking-[0.18em] opacity-80">数据置信度</div>
+        <div className="mt-2 flex items-end gap-3">
+          <div className="text-4xl font-black text-white">{confidence.score}</div>
+          <div className="pb-1 text-lg font-semibold">{confidence.level}</div>
+        </div>
+        <p className="mt-3 text-sm leading-6">{confidence.summary}</p>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-emerald-300/20 bg-slate-950/60 p-3">
+          <div className="font-semibold text-emerald-100">已获取</div>
+          <ul className="mt-2 space-y-1 text-slate-300">
+            {listItems(confidence.available).map((item, index) => <li key={index}>- {item}</li>)}
+          </ul>
+        </div>
+        <div className="rounded-lg border border-amber-300/20 bg-slate-950/60 p-3">
+          <div className="font-semibold text-amber-100">缺失</div>
+          <ul className="mt-2 space-y-1 text-slate-300">
+            {listItems(confidence.missing).map((item, index) => <li key={index}>- {item}</li>)}
+          </ul>
+        </div>
+      </div>
+      {listItems(confidence.warnings).length ? (
+        <div className="mt-4 rounded-lg border border-rose-300/20 bg-rose-400/10 p-3 text-rose-50">
+          {listItems(confidence.warnings).map((item, index) => <p key={index}>- {item}</p>)}
+        </div>
+      ) : null}
+      <p className="mt-4 text-cyan-100">{confidence.decision_gate}</p>
+    </Section>
+  );
+}
+
+export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportProps) {
   if (!report) {
     return (
       <section className="mx-auto max-w-6xl px-5 py-8">
@@ -261,10 +311,19 @@ export default function ImmuneReport({ report }: ImmuneReportProps) {
               </div>
             ))}
           </div>
+          {report.journal_saved && report.report_id ? (
+            <button
+              className="mt-4 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-100"
+              onClick={() => onOpenNotebook?.(report.report_id)}
+            >
+              Open in Notebook
+            </button>
+          ) : null}
         </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
+        <DataConfidence confidence={report.data_confidence} />
         <Section title="A. Risk Scan">
           <p className="font-semibold text-white">{report.risk_scan?.risk_score} / {report.risk_scan?.risk_level}</p>
           <MarketData rawData={report.risk_scan?.raw_data} assetType={report.asset_type} />

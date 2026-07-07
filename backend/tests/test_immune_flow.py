@@ -52,6 +52,9 @@ def test_immune_report_fomo_saves_journal(monkeypatch):
     assert data["journal_saved"] is True
     assert data["ai_coach"]["fallback_used"] is True
     assert data["ai_coach"]["coach_message"]
+    assert data["data_confidence"]["score"] < 50
+    assert data["data_confidence"]["level"] in {"Low Confidence", "Very Low Confidence"}
+    assert data["ai_coach"]["data_confidence_note"]
     assert data["munger_lens"]["framework"] == "Munger Lens"
     assert data["munger_lens"]["munger_verdict"] in {"No", "Too Hard", "Small Bet"}
 
@@ -116,3 +119,4 @@ def test_immune_report_supports_cn_stock(monkeypatch):
     assert response.status_code == 200
     assert response.json()["asset_type"] == "cn_stock"
     assert response.json()["risk_scan"]["raw_data"]["name"] == "贵州茅台"
+    assert response.json()["data_confidence"]["score"] < 50

@@ -74,6 +74,7 @@ class ImmuneReportResponse(BaseModel):
     asset: str
     asset_type: str
     risk_scan: Dict[str, Any]
+    data_confidence: Optional[Dict[str, Any]] = None
     emotion_scan: Dict[str, Any]
     bias_detection: Dict[str, Any]
     devil_advocate: Dict[str, Any]

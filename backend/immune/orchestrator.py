@@ -1,5 +1,6 @@
 from immune.bias import detect_bias
 from immune.conviction import build_conviction_score
+from immune.data_confidence import build_data_confidence
 from immune.decision import make_decision
 from immune.devil import build_devil_advocate
 from immune.emotion import scan_emotion
@@ -29,6 +30,7 @@ def _combined_text(payload: ImmuneReportRequest) -> str:
 def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneReportResponse:
     asset = payload.asset.upper()
     risk_scan = run_risk_scan(payload)
+    data_confidence = build_data_confidence(payload.asset_type, risk_scan)
     emotion_scan = scan_emotion(payload)
     bias_detection = detect_bias(_combined_text(payload))
     kol_risk_scan = build_kol_risk_summary(_combined_text(payload), user_id)
@@ -44,6 +46,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
         conviction["score"],
         kol_dependency=kol_dependency,
         kol_triggered=bool(kol_risk_scan),
+        data_confidence_score=data_confidence["score"],
     )
     summary = (
         f"{asset} 本次免疫扫描：资产风险 {risk_scan['risk_score']}，情绪风险 "
@@ -56,6 +59,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
         "asset": asset,
         "asset_type": payload.asset_type,
         "risk_scan": risk_scan,
+        "data_confidence": data_confidence,
         "emotion_scan": emotion_scan,
         "bias_detection": bias_detection,
         "devil_advocate": devil,
