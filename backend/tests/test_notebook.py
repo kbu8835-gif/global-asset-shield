@@ -58,6 +58,7 @@ def test_notebook_crud_review_and_coach():
     assert reviewed["mistakes"]
     assert reviewed["lesson"]
     assert reviewed["next_action"]
+    assert "Review:" not in (reviewed["notes"] or "")
 
     delete_response = client.delete(f"/notebook/{notebook_id}")
     assert delete_response.status_code == 200

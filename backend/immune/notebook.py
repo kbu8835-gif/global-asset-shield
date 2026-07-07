@@ -281,7 +281,6 @@ def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: i
             lesson=lesson,
             next_action=next_action,
             review_date=_now(),
-            notes=((current.notes or "") + f"\n\nReview: {text}").strip(),
         ),
         user_id,
     )

@@ -415,13 +415,13 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
                   placeholder="结果如何？我当时哪里想错了？有没有违反自己的规则？"
                 />
                 <button onClick={submitReview} className="mt-3 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950">
-                  Generate Review
+                  AI 复盘
                 </button>
                 {(draft.mistakes || draft.lesson || draft.next_action) && (
                   <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
-                    <p><span className="text-white">Mistake:</span> {draft.mistakes}</p>
-                    <p><span className="text-white">Lesson:</span> {draft.lesson}</p>
-                    <p><span className="text-white">Next Rule:</span> {draft.next_action}</p>
+                    <p><span className="text-white">错误类型：</span>{draft.mistakes}</p>
+                    <p><span className="text-white">教训：</span>{draft.lesson}</p>
+                    <p><span className="text-white">下一条规则：</span>{draft.next_action}</p>
                   </div>
                 )}
               </details>
