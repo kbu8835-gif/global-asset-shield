@@ -4,7 +4,7 @@ import requests
 
 from config import DEEPSEEK_API_BASE, DEEPSEEK_API_KEY, DEEPSEEK_MODEL
 from database import is_database_connected
-from scanner.cn_stock import fetch_eastmoney_cn_stock
+from scanner.cn_stock import fetch_cn_stock
 from scanner.stock import fetch_yahoo_chart_stock
 
 
@@ -108,12 +108,16 @@ def _check_yahoo_chart() -> Dict[str, Any]:
 
 def _check_cn_stock() -> Dict[str, Any]:
     try:
-        data = fetch_eastmoney_cn_stock("600519")
+        data = fetch_cn_stock("600519")
         if data.get("price") is not None:
-            return _source("东方财富 A股行情", "connected", f"A股免费行情源可用，贵州茅台最近价格 {data['price']}。", True, True)
-        return _source("东方财富 A股行情", "degraded", "东方财富可达，但测试没有返回价格。", False, True)
+            source = data.get("data_source", "free source")
+            detail = f"A股免费行情源可用，当前使用 {source}，贵州茅台最近价格 {data['price']}。"
+            if data.get("partial_data"):
+                detail += " 当前源为轻量备用源，部分基本面字段可能缺失。"
+            return _source("A股免费行情", "connected", detail, True, True)
+        return _source("A股免费行情", "degraded", "A股免费源可达，但测试没有返回价格。", False, True)
     except Exception as exc:
-        return _source("东方财富 A股行情", "degraded", f"东方财富暂时不可达：{exc.__class__.__name__}，A股会继续尝试 akshare，再失败才使用 mock fallback。", False, True)
+        return _source("A股免费行情", "degraded", f"东方财富、新浪、akshare 均暂时不可达：{exc.__class__.__name__}，A股会使用 mock fallback。", False, True)
 
 
 def _summary(checks: List[Dict[str, Any]]) -> str:

@@ -31,9 +31,42 @@ def test_cn_stock_uses_eastmoney_first(monkeypatch):
     assert result["price"] == 1500.0
 
 
-def test_cn_stock_falls_back_to_akshare_after_eastmoney_failure(monkeypatch):
+def test_cn_stock_falls_back_to_sina_after_eastmoney_failure(monkeypatch):
     def eastmoney_fail(_symbol):
         raise RuntimeError("eastmoney down")
+
+    def sina(_symbol):
+        return {
+            "symbol": "600519",
+            "name": "贵州茅台",
+            "price": 1495.0,
+            "day_change_percent": 0.8,
+            "volume": 95000,
+            "turnover_rate": None,
+            "pe": None,
+            "market_cap": None,
+            "is_st": False,
+            "currency": "CNY",
+            "data_source": "sina",
+            "fallback_mock": False,
+            "partial_data": True,
+        }
+
+    monkeypatch.setattr("scanner.cn_stock.fetch_eastmoney_cn_stock", eastmoney_fail)
+    monkeypatch.setattr("scanner.cn_stock.fetch_sina_cn_stock", sina)
+    result = fetch_cn_stock("600519")
+
+    assert result["data_source"] == "sina"
+    assert result["partial_fallback"] is True
+    assert result["fallback_reason"] == "eastmoney:RuntimeError"
+
+
+def test_cn_stock_falls_back_to_akshare_after_light_sources_fail(monkeypatch):
+    def eastmoney_fail(_symbol):
+        raise RuntimeError("eastmoney down")
+
+    def sina_fail(_symbol):
+        raise RuntimeError("sina down")
 
     def akshare(_symbol):
         return {
@@ -52,12 +85,13 @@ def test_cn_stock_falls_back_to_akshare_after_eastmoney_failure(monkeypatch):
         }
 
     monkeypatch.setattr("scanner.cn_stock.fetch_eastmoney_cn_stock", eastmoney_fail)
+    monkeypatch.setattr("scanner.cn_stock.fetch_sina_cn_stock", sina_fail)
     monkeypatch.setattr("scanner.cn_stock.fetch_akshare_cn_stock", akshare)
     result = fetch_cn_stock("600519")
 
     assert result["data_source"] == "akshare"
     assert result["partial_fallback"] is True
-    assert result["fallback_reason"] == "RuntimeError"
+    assert result["fallback_reason"] == "eastmoney:RuntimeError;sina:RuntimeError"
 
 
 def test_cn_stock_scanner_external_failure_fallback(monkeypatch):

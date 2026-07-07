@@ -26,6 +26,12 @@ def _eastmoney_secid(symbol: str) -> str:
     return f"{market}.{normalized}"
 
 
+def _sina_symbol(symbol: str) -> str:
+    normalized = normalize_cn_symbol(symbol)
+    prefix = "sh" if normalized.startswith(("5", "6", "9")) else "sz"
+    return f"{prefix}{normalized}"
+
+
 def _eastmoney_scaled(value: Any, scale: float = 100) -> float | None:
     number = _safe_float(value)
     if number is None:
@@ -109,14 +115,65 @@ def fetch_akshare_cn_stock(symbol: str) -> Dict[str, Any]:
     }
 
 
+def fetch_sina_cn_stock(symbol: str) -> Dict[str, Any]:
+    normalized = normalize_cn_symbol(symbol)
+    response = requests.get(
+        f"https://hq.sinajs.cn/list={_sina_symbol(normalized)}",
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"},
+        timeout=12,
+    )
+    response.raise_for_status()
+    response.encoding = "gbk"
+    text = response.text
+    if '="' not in text:
+        raise ValueError("Sina returned malformed quote")
+    payload = text.split('="', 1)[1].split('";', 1)[0]
+    fields = payload.split(",")
+    if len(fields) < 32 or not fields[0]:
+        raise ValueError("Sina returned no quote fields")
+    name = fields[0]
+    open_price = _safe_float(fields[1])
+    previous_close = _safe_float(fields[2])
+    price = _safe_float(fields[3])
+    volume = _safe_float(fields[8])
+    day_change_percent = None
+    if price is not None and previous_close:
+        day_change_percent = ((price - previous_close) / previous_close) * 100
+    if price is None or price <= 0:
+        raise ValueError("Sina returned no live price")
+    return {
+        "symbol": normalized,
+        "name": name,
+        "price": price,
+        "open_price": open_price,
+        "previous_close": previous_close,
+        "day_change_percent": day_change_percent,
+        "volume": volume,
+        "turnover_rate": None,
+        "pe": None,
+        "market_cap": None,
+        "is_st": "ST" in str(name).upper(),
+        "currency": "CNY",
+        "data_source": "sina",
+        "fallback_mock": False,
+        "partial_data": True,
+    }
+
+
 def fetch_cn_stock(symbol: str) -> Dict[str, Any]:
     try:
         return fetch_eastmoney_cn_stock(symbol)
     except Exception as eastmoney_exc:
-        data = fetch_akshare_cn_stock(symbol)
-        data["partial_fallback"] = True
-        data["fallback_reason"] = eastmoney_exc.__class__.__name__
-        return data
+        try:
+            data = fetch_sina_cn_stock(symbol)
+            data["partial_fallback"] = True
+            data["fallback_reason"] = f"eastmoney:{eastmoney_exc.__class__.__name__}"
+            return data
+        except Exception as sina_exc:
+            data = fetch_akshare_cn_stock(symbol)
+            data["partial_fallback"] = True
+            data["fallback_reason"] = f"eastmoney:{eastmoney_exc.__class__.__name__};sina:{sina_exc.__class__.__name__}"
+            return data
 
 
 def scan_cn_stock(symbol: str) -> RiskScan:
@@ -145,7 +202,9 @@ def scan_cn_stock(symbol: str) -> RiskScan:
             f"{data_source} 已读取 {raw_data.get('name') or normalized}：价格 {price_text}，总市值 {market_cap_text}，涨跌幅 {change_text}，PE {pe if pe is not None else '未知'}"
         )
         if raw_data.get("partial_fallback"):
-            reasons.append(f"东方财富直连暂时不可用，已切换到 akshare：{raw_data.get('fallback_reason')}")
+            reasons.append(f"主行情源暂时不可用，已切换到备用源：{raw_data.get('fallback_reason')}")
+        if raw_data.get("partial_data"):
+            reasons.append("当前备用源只提供价格、涨跌幅和成交量，PE、市值、换手率等基础面字段暂时缺失")
 
     if is_st:
         score += 30
