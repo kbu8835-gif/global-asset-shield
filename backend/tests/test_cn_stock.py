@@ -61,12 +61,49 @@ def test_cn_stock_falls_back_to_sina_after_eastmoney_failure(monkeypatch):
     assert result["fallback_reason"] == "eastmoney:RuntimeError"
 
 
+def test_cn_stock_falls_back_to_yahoo_after_china_sources_fail(monkeypatch):
+    def eastmoney_fail(_symbol):
+        raise RuntimeError("eastmoney down")
+
+    def sina_fail(_symbol):
+        raise RuntimeError("sina down")
+
+    def yahoo(_symbol):
+        return {
+            "symbol": "600519",
+            "name": "Kweichow Moutai",
+            "price": 1488.0,
+            "day_change_percent": -0.8,
+            "volume": 85000,
+            "turnover_rate": None,
+            "pe": None,
+            "market_cap": None,
+            "is_st": False,
+            "currency": "CNY",
+            "data_source": "yahoo_cn_chart",
+            "fallback_mock": False,
+            "partial_data": True,
+        }
+
+    monkeypatch.setattr("scanner.cn_stock.fetch_eastmoney_cn_stock", eastmoney_fail)
+    monkeypatch.setattr("scanner.cn_stock.fetch_sina_cn_stock", sina_fail)
+    monkeypatch.setattr("scanner.cn_stock.fetch_yahoo_cn_stock", yahoo)
+    result = fetch_cn_stock("600519")
+
+    assert result["data_source"] == "yahoo_cn_chart"
+    assert result["partial_fallback"] is True
+    assert result["fallback_reason"] == "eastmoney:RuntimeError;sina:RuntimeError"
+
+
 def test_cn_stock_falls_back_to_akshare_after_light_sources_fail(monkeypatch):
     def eastmoney_fail(_symbol):
         raise RuntimeError("eastmoney down")
 
     def sina_fail(_symbol):
         raise RuntimeError("sina down")
+
+    def yahoo_fail(_symbol):
+        raise RuntimeError("yahoo down")
 
     def akshare(_symbol):
         return {
@@ -86,12 +123,13 @@ def test_cn_stock_falls_back_to_akshare_after_light_sources_fail(monkeypatch):
 
     monkeypatch.setattr("scanner.cn_stock.fetch_eastmoney_cn_stock", eastmoney_fail)
     monkeypatch.setattr("scanner.cn_stock.fetch_sina_cn_stock", sina_fail)
+    monkeypatch.setattr("scanner.cn_stock.fetch_yahoo_cn_stock", yahoo_fail)
     monkeypatch.setattr("scanner.cn_stock.fetch_akshare_cn_stock", akshare)
     result = fetch_cn_stock("600519")
 
     assert result["data_source"] == "akshare"
     assert result["partial_fallback"] is True
-    assert result["fallback_reason"] == "eastmoney:RuntimeError;sina:RuntimeError"
+    assert result["fallback_reason"] == "eastmoney:RuntimeError;sina:RuntimeError;yahoo:RuntimeError"
 
 
 def test_cn_stock_scanner_external_failure_fallback(monkeypatch):

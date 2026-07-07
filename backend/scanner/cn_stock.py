@@ -32,6 +32,12 @@ def _sina_symbol(symbol: str) -> str:
     return f"{prefix}{normalized}"
 
 
+def _yahoo_symbol(symbol: str) -> str:
+    normalized = normalize_cn_symbol(symbol)
+    suffix = "SS" if normalized.startswith(("5", "6", "9")) else "SZ"
+    return f"{normalized}.{suffix}"
+
+
 def _eastmoney_scaled(value: Any, scale: float = 100) -> float | None:
     number = _safe_float(value)
     if number is None:
@@ -160,6 +166,48 @@ def fetch_sina_cn_stock(symbol: str) -> Dict[str, Any]:
     }
 
 
+def fetch_yahoo_cn_stock(symbol: str) -> Dict[str, Any]:
+    normalized = normalize_cn_symbol(symbol)
+    yahoo_symbol = _yahoo_symbol(normalized)
+    response = requests.get(
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}",
+        params={"range": "5d", "interval": "1d"},
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=12,
+    )
+    response.raise_for_status()
+    result = ((response.json() or {}).get("chart", {}).get("result") or [None])[0]
+    if not result:
+        raise ValueError("Yahoo returned no chart")
+    meta = result.get("meta") or {}
+    quote = ((result.get("indicators") or {}).get("quote") or [None])[0] or {}
+    closes = [value for value in quote.get("close", []) if value is not None]
+    volumes = [value for value in quote.get("volume", []) if value is not None]
+    if not closes:
+        raise ValueError("Yahoo returned no close prices")
+    price = _safe_float(closes[-1] or meta.get("regularMarketPrice"))
+    previous_close = _safe_float(closes[-2]) if len(closes) >= 2 else _safe_float(meta.get("previousClose"))
+    day_change_percent = None
+    if price is not None and previous_close:
+        day_change_percent = ((price - previous_close) / previous_close) * 100
+    return {
+        "symbol": normalized,
+        "name": meta.get("shortName") or yahoo_symbol,
+        "price": price,
+        "previous_close": previous_close,
+        "day_change_percent": day_change_percent,
+        "volume": _safe_float(volumes[-1]) if volumes else None,
+        "turnover_rate": None,
+        "pe": None,
+        "market_cap": None,
+        "is_st": "ST" in str(meta.get("shortName") or "").upper(),
+        "currency": meta.get("currency") or "CNY",
+        "data_source": "yahoo_cn_chart",
+        "fallback_mock": False,
+        "partial_data": True,
+    }
+
+
 def fetch_cn_stock(symbol: str) -> Dict[str, Any]:
     try:
         return fetch_eastmoney_cn_stock(symbol)
@@ -170,10 +218,20 @@ def fetch_cn_stock(symbol: str) -> Dict[str, Any]:
             data["fallback_reason"] = f"eastmoney:{eastmoney_exc.__class__.__name__}"
             return data
         except Exception as sina_exc:
-            data = fetch_akshare_cn_stock(symbol)
-            data["partial_fallback"] = True
-            data["fallback_reason"] = f"eastmoney:{eastmoney_exc.__class__.__name__};sina:{sina_exc.__class__.__name__}"
-            return data
+            try:
+                data = fetch_yahoo_cn_stock(symbol)
+                data["partial_fallback"] = True
+                data["fallback_reason"] = f"eastmoney:{eastmoney_exc.__class__.__name__};sina:{sina_exc.__class__.__name__}"
+                return data
+            except Exception as yahoo_exc:
+                data = fetch_akshare_cn_stock(symbol)
+                data["partial_fallback"] = True
+                data["fallback_reason"] = (
+                    f"eastmoney:{eastmoney_exc.__class__.__name__};"
+                    f"sina:{sina_exc.__class__.__name__};"
+                    f"yahoo:{yahoo_exc.__class__.__name__}"
+                )
+                return data
 
 
 def scan_cn_stock(symbol: str) -> RiskScan:
@@ -202,7 +260,7 @@ def scan_cn_stock(symbol: str) -> RiskScan:
             f"{data_source} 已读取 {raw_data.get('name') or normalized}：价格 {price_text}，总市值 {market_cap_text}，涨跌幅 {change_text}，PE {pe if pe is not None else '未知'}"
         )
         if raw_data.get("partial_fallback"):
-            reasons.append(f"主行情源暂时不可用，已切换到备用源：{raw_data.get('fallback_reason')}")
+            reasons.append(f"主行情源暂时不可用，已切换到 {data_source} 备用源：{raw_data.get('fallback_reason')}")
         if raw_data.get("partial_data"):
             reasons.append("当前备用源只提供价格、涨跌幅和成交量，PE、市值、换手率等基础面字段暂时缺失")
 
