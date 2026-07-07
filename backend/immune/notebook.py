@@ -219,6 +219,17 @@ def update_notebook(notebook_id: int, payload: NotebookUpdate, user_id: int) -> 
     return get_notebook(notebook_id, user_id)
 
 
+def delete_notebook(notebook_id: int, user_id: int) -> bool:
+    init_db()
+    with get_connection() as conn:
+        row = conn.execute("SELECT id FROM journal_entries WHERE id = ? AND user_id = ?", (notebook_id, user_id)).fetchone()
+        if row is None:
+            return False
+        conn.execute("DELETE FROM journal_entries WHERE id = ? AND user_id = ?", (notebook_id, user_id))
+        conn.commit()
+    return True
+
+
 def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: int) -> Optional[NotebookDetail]:
     current = get_notebook(notebook_id, user_id)
     if current is None:

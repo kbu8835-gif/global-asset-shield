@@ -26,7 +26,7 @@ from immune.kol_intelligence import (
     update_kol_call,
     update_kol_profile,
 )
-from immune.notebook import create_notebook, get_notebook, list_notebooks, review_notebook, update_notebook
+from immune.notebook import create_notebook, delete_notebook, get_notebook, list_notebooks, review_notebook, update_notebook
 from immune.orchestrator import build_immune_report
 from immune.review import review_journal
 from journal import (
@@ -341,6 +341,13 @@ def notebook_update(notebook_id: int, payload: NotebookUpdate, user: UserPublic 
     if notebook is None:
         raise HTTPException(status_code=404, detail="Notebook not found")
     return notebook
+
+
+@app.delete("/notebook/{notebook_id}")
+def notebook_delete(notebook_id: int, user: UserPublic = Depends(get_current_user_or_demo)):
+    if not delete_notebook(notebook_id, user.id):
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    return {"deleted": True}
 
 
 @app.post("/notebook/{notebook_id}/review")

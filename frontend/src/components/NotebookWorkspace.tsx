@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   createNotebook,
+  deleteNotebook,
   getNotebook,
   getNotebooks,
   reviewNotebook,
@@ -149,6 +150,21 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     await loadList();
   };
 
+  const removeNotebook = async (item: NotebookListItem) => {
+    const confirmed = window.confirm(`确定删除「${item.title}」吗？这会真正删除这条笔记，不能撤销。`);
+    if (!confirmed) return;
+    await deleteNotebook(item.id);
+    if (draft?.id === item.id) {
+      setSelected(null);
+      setDraft(null);
+    }
+    const nextItems = await getNotebooks();
+    setItems(nextItems);
+    if (draft?.id === item.id && nextItems[0]) {
+      await openNotebook(nextItems[0].id);
+    }
+  };
+
   return (
     <section className="mx-auto max-w-7xl px-5 py-8">
       <div className="grid min-h-[760px] gap-5 lg:grid-cols-[360px_1fr]">
@@ -183,22 +199,32 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
           </div>
           <div className="mt-4 space-y-2">
             {filtered.map((item) => (
-              <button
+              <div
                 key={item.id}
-                onClick={() => openNotebook(item.id)}
                 className={`w-full rounded-lg border p-3 text-left transition ${
                   draft?.id === item.id ? "border-cyan-300/50 bg-cyan-300/10" : "border-slate-800 bg-slate-900/50 hover:border-slate-600"
                 }`}
               >
-                <div className="flex items-center gap-2 text-white">
-                  <span>📄</span>
-                  <span className="font-semibold">{item.title}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <button className="min-w-0 flex-1 text-left" onClick={() => openNotebook(item.id)}>
+                    <div className="flex items-center gap-2 text-white">
+                      <span>📄</span>
+                      <span className="truncate font-semibold">{item.title}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                      <span>{formatDate(item.updated_at)}</span>
+                      <span>{item.decision}</span>
+                    </div>
+                  </button>
+                  <button
+                    className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-300/60 hover:text-red-100"
+                    onClick={() => removeNotebook(item).catch((err) => onError(err instanceof Error ? err.message : "Failed to delete notebook"))}
+                    title="Delete notebook"
+                  >
+                    Delete
+                  </button>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-                  <span>{formatDate(item.updated_at)}</span>
-                  <span>{item.decision}</span>
-                </div>
-              </button>
+              </div>
             ))}
           </div>
         </aside>

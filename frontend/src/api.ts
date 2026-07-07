@@ -348,6 +348,10 @@ export function updateNotebook(id: number, payload: NotebookUpdate) {
   });
 }
 
+export function deleteNotebook(id: number) {
+  return requestJson<{ deleted: boolean }>(`/notebook/${id}`, { method: "DELETE" });
+}
+
 export function reviewNotebook(id: number, payload: { user_result_text: string; current_price?: number }) {
   return requestJson<NotebookDetail>(`/notebook/${id}/review`, {
     method: "POST",

@@ -58,3 +58,10 @@ def test_notebook_crud_review_and_coach():
     assert reviewed["mistakes"]
     assert reviewed["lesson"]
     assert reviewed["next_action"]
+
+    delete_response = client.delete(f"/notebook/{notebook_id}")
+    assert delete_response.status_code == 200
+    assert delete_response.json()["deleted"] is True
+
+    missing_response = client.get(f"/notebook/{notebook_id}")
+    assert missing_response.status_code == 404
