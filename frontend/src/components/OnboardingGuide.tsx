@@ -1,6 +1,6 @@
 type OnboardingGuideProps = {
   activeView: string;
-  onSelectView: (view: "conversation" | "investmentJournal" | "notebook" | "kol" | "dna" | "data") => void;
+  onSelectView: (view: "conversation" | "notebook" | "kol" | "dna" | "data") => void;
 };
 
 const steps = [

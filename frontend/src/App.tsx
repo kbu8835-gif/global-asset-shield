@@ -4,13 +4,12 @@ import {
   createImmuneReport,
   getMe,
   getInvestmentDNA,
-  getJournal,
+  getInvestmentJournalHealth,
   getToken,
   logout,
-  reviewJournal,
   type ImmuneReportPayload,
+  type InvestmentJournalHealth,
   type InvestmentDNA as InvestmentDNAType,
-  type JournalEntry,
   type User,
 } from "./api";
 import AuthPage from "./components/AuthPage";
@@ -21,12 +20,9 @@ import FriendlyError from "./components/FriendlyError";
 import ImmuneForm from "./components/ImmuneForm";
 import ImmuneReport from "./components/ImmuneReport";
 import InvestmentDNA from "./components/InvestmentDNA";
-import InvestmentJournalPage from "./components/InvestmentJournalPage";
-import JournalList from "./components/JournalList";
 import KOLIntelligence from "./components/KOLIntelligence";
 import NotebookWorkspace from "./components/NotebookWorkspace";
 import OnboardingGuide from "./components/OnboardingGuide";
-import ReviewPanel from "./components/ReviewPanel";
 import ScanProgress from "./components/ScanProgress";
 import UserMenu from "./components/UserMenu";
 
@@ -45,36 +41,26 @@ const defaultForm: ImmuneReportPayload = {
 export default function App() {
   const scanRef = useRef<HTMLDivElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
-  const [mainView, setMainView] = useState<"conversation" | "investmentJournal" | "notebook" | "kol" | "dna" | "data">("conversation");
+  const [mainView, setMainView] = useState<"conversation" | "notebook" | "kol" | "dna" | "data">("conversation");
   const [scanMode, setScanMode] = useState<"conversation" | "advanced">("conversation");
   const [form, setForm] = useState<ImmuneReportPayload>(defaultForm);
   const [report, setReport] = useState<any | null>(null);
   const [notebookFocusId, setNotebookFocusId] = useState<number | null>(null);
-  const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [dna, setDna] = useState<InvestmentDNAType | null>(null);
-  const [review, setReview] = useState<any | null>(null);
+  const [health, setHealth] = useState<InvestmentJournalHealth | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
-  const [loadingJournal, setLoadingJournal] = useState(false);
   const [loadingDNA, setLoadingDNA] = useState(false);
   const [bootingAuth, setBootingAuth] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState("");
 
-  const loadJournal = async () => {
-    setLoadingJournal(true);
-    try {
-      setJournal(await getJournal());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load journal");
-    } finally {
-      setLoadingJournal(false);
-    }
-  };
-
   const loadDNA = async () => {
     setLoadingDNA(true);
     try {
       setDna(await getInvestmentDNA());
+      if (user?.id) {
+        setHealth(await getInvestmentJournalHealth(String(user.id)));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load Investment DNA");
     } finally {
@@ -85,11 +71,9 @@ export default function App() {
   const submitScan = async (payload: ImmuneReportPayload) => {
     setLoadingReport(true);
     setError("");
-    setReview(null);
     try {
       const nextReport = await createImmuneReport(payload);
       setReport(nextReport);
-      await loadJournal();
       await loadDNA();
       window.setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (err) {
@@ -101,22 +85,6 @@ export default function App() {
 
   const runScan = async () => {
     await submitScan(form);
-  };
-
-  const handleReview = async (entry: JournalEntry) => {
-    setError("");
-    try {
-      const result = await reviewJournal(entry.id, {
-        journal_id: entry.id,
-        current_price: 0.000012,
-        user_result_text: "一个月后亏了28%，我当时太冲动了",
-      });
-      setReview(result);
-      await loadJournal();
-      await loadDNA();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to review journal");
-    }
   };
 
   const openReportNotebook = (id: number) => {
@@ -135,9 +103,8 @@ export default function App() {
     clearToken();
     setUser(null);
     setReport(null);
-    setJournal([]);
     setDna(null);
-    setReview(null);
+    setHealth(null);
     setError("");
   };
 
@@ -167,7 +134,6 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    loadJournal();
     loadDNA();
   }, [user?.id]);
 
@@ -192,7 +158,6 @@ export default function App() {
         <div className="flex flex-wrap gap-2 rounded-lg border border-slate-800 bg-slate-950/80 p-1">
           {[
             ["conversation", "Conversation"],
-            ["investmentJournal", "Journal"],
             ["notebook", "Notebook"],
             ["kol", "KOL"],
             ["dna", "DNA"],
@@ -201,7 +166,7 @@ export default function App() {
             <button
               key={key}
               className={`rounded-md px-4 py-2 text-sm font-semibold ${mainView === key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:text-white"}`}
-              onClick={() => setMainView(key as "conversation" | "investmentJournal" | "notebook" | "kol" | "dna" | "data")}
+              onClick={() => setMainView(key as "conversation" | "notebook" | "kol" | "dna" | "data")}
             >
               {label}
             </button>
@@ -237,15 +202,6 @@ export default function App() {
           <div ref={reportRef}>
             <ImmuneReport report={report} onOpenNotebook={openReportNotebook} />
           </div>
-          <JournalList journal={journal} loading={loadingJournal} onRefresh={loadJournal} onReview={handleReview} />
-          <ReviewPanel review={review} />
-        </>
-      ) : null}
-
-      {mainView === "investmentJournal" ? (
-        <>
-          <FriendlyError message={error} />
-          <InvestmentJournalPage onError={setError} />
         </>
       ) : null}
 
@@ -266,7 +222,7 @@ export default function App() {
       {mainView === "dna" ? (
         <>
           <FriendlyError message={error} />
-          <InvestmentDNA dna={dna} loading={loadingDNA} onRefresh={loadDNA} />
+          <InvestmentDNA dna={dna} health={health} loading={loadingDNA} onRefresh={loadDNA} />
         </>
       ) : null}
 

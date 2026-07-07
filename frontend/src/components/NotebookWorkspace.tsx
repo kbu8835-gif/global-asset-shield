@@ -157,6 +157,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
             <div>
               <div className="text-sm uppercase tracking-[0.18em] text-cyan-200">Notebook</div>
               <h2 className="mt-1 text-xl font-semibold text-white">AI Investment Notebook</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">这里就是你的投资日记。扫描、理由、决定和复盘都放在这里。</p>
             </div>
             <button onClick={createBlank} className="rounded-lg bg-cyan-300 px-3 py-2 text-sm font-semibold text-slate-950">
               New

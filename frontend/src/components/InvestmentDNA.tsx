@@ -1,7 +1,8 @@
-import type { InvestmentDNA as InvestmentDNAType } from "../api";
+import type { InvestmentDNA as InvestmentDNAType, InvestmentJournalHealth } from "../api";
 
 type InvestmentDNAProps = {
   dna: InvestmentDNAType | null;
+  health: InvestmentJournalHealth | null;
   loading: boolean;
   onRefresh: () => void;
 };
@@ -24,7 +25,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function InvestmentDNA({ dna, loading, onRefresh }: InvestmentDNAProps) {
+export default function InvestmentDNA({ dna, health, loading, onRefresh }: InvestmentDNAProps) {
   return (
     <section className="mx-auto max-w-6xl px-5 pb-16 pt-4">
       <div className="rounded-lg border border-cyan-300/20 bg-slate-950/80 p-6 shadow-glow">
@@ -53,6 +54,19 @@ export default function InvestmentDNA({ dna, loading, onRefresh }: InvestmentDNA
               <Metric label="Independent Thinking" value={dna.independent_thinking} />
               <Metric label="Conviction" value={dna.conviction} />
             </div>
+            {health ? (
+              <div className="mt-5 grid gap-4 md:grid-cols-[260px_1fr]">
+                <div className="rounded-lg border border-emerald-300/30 bg-emerald-400/10 p-5">
+                  <div className="text-sm text-emerald-100">Investment Health</div>
+                  <div className="mt-2 text-5xl font-black text-white">{health.health_score}</div>
+                  <div className="mt-2 text-sm text-emerald-100">Behavior Risk: {health.behavior_risk_score}</div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-5">
+                  <div className="text-sm font-semibold text-white">Health Summary</div>
+                  <p className="mt-2 leading-7 text-slate-300">{health.summary}</p>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-5 rounded-lg border border-slate-800 bg-slate-900/70 p-5">
               <div className="text-sm font-semibold text-white">Summary</div>
               <p className="mt-2 leading-7 text-slate-300">{dna.summary}</p>
