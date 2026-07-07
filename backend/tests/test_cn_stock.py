@@ -1,10 +1,63 @@
 from fastapi.testclient import TestClient
 
 from app import app
-from scanner.cn_stock import scan_cn_stock
+from scanner.cn_stock import fetch_cn_stock, scan_cn_stock
 
 
 client = TestClient(app)
+
+
+def test_cn_stock_uses_eastmoney_first(monkeypatch):
+    def eastmoney(_symbol):
+        return {
+            "symbol": "600519",
+            "name": "贵州茅台",
+            "price": 1500.0,
+            "day_change_percent": 1.2,
+            "volume": 100000,
+            "turnover_rate": 0.5,
+            "pe": 28,
+            "market_cap": 1_800_000_000_000,
+            "is_st": False,
+            "currency": "CNY",
+            "data_source": "eastmoney",
+            "fallback_mock": False,
+        }
+
+    monkeypatch.setattr("scanner.cn_stock.fetch_eastmoney_cn_stock", eastmoney)
+    result = fetch_cn_stock("600519")
+
+    assert result["data_source"] == "eastmoney"
+    assert result["price"] == 1500.0
+
+
+def test_cn_stock_falls_back_to_akshare_after_eastmoney_failure(monkeypatch):
+    def eastmoney_fail(_symbol):
+        raise RuntimeError("eastmoney down")
+
+    def akshare(_symbol):
+        return {
+            "symbol": "600519",
+            "name": "贵州茅台",
+            "price": 1490.0,
+            "day_change_percent": -0.5,
+            "volume": 90000,
+            "turnover_rate": 0.4,
+            "pe": 27,
+            "market_cap": 1_780_000_000_000,
+            "is_st": False,
+            "currency": "CNY",
+            "data_source": "akshare",
+            "fallback_mock": False,
+        }
+
+    monkeypatch.setattr("scanner.cn_stock.fetch_eastmoney_cn_stock", eastmoney_fail)
+    monkeypatch.setattr("scanner.cn_stock.fetch_akshare_cn_stock", akshare)
+    result = fetch_cn_stock("600519")
+
+    assert result["data_source"] == "akshare"
+    assert result["partial_fallback"] is True
+    assert result["fallback_reason"] == "RuntimeError"
 
 
 def test_cn_stock_scanner_external_failure_fallback(monkeypatch):

@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+import requests
+
 from scanner.utils import clamp_score, risk_level
 from schemas import RiskScan
 
@@ -18,6 +20,19 @@ def normalize_cn_symbol(symbol: str) -> str:
     return cleaned.zfill(6) if cleaned.isdigit() and len(cleaned) <= 6 else cleaned
 
 
+def _eastmoney_secid(symbol: str) -> str:
+    normalized = normalize_cn_symbol(symbol)
+    market = "1" if normalized.startswith(("5", "6", "9")) else "0"
+    return f"{market}.{normalized}"
+
+
+def _eastmoney_scaled(value: Any, scale: float = 100) -> float | None:
+    number = _safe_float(value)
+    if number is None:
+        return None
+    return number / scale
+
+
 def _mock_cn_stock(symbol: str) -> Dict[str, Any]:
     normalized = normalize_cn_symbol(symbol)
     hot = normalized in {"600519", "300750", "000001", "000858", "002594"}
@@ -32,11 +47,44 @@ def _mock_cn_stock(symbol: str) -> Dict[str, Any]:
         "market_cap": 2_100_000_000_000 if normalized == "600519" else 35_000_000_000,
         "is_st": normalized.startswith("ST") or normalized.endswith("ST"),
         "currency": "CNY",
+        "data_source": "mock",
         "fallback_mock": True,
     }
 
 
-def fetch_cn_stock(symbol: str) -> Dict[str, Any]:
+def fetch_eastmoney_cn_stock(symbol: str) -> Dict[str, Any]:
+    normalized = normalize_cn_symbol(symbol)
+    response = requests.get(
+        "https://push2.eastmoney.com/api/qt/stock/get",
+        params={
+            "secid": _eastmoney_secid(normalized),
+            "fields": "f43,f57,f58,f47,f116,f162,f168,f169,f170",
+        },
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
+        timeout=12,
+    )
+    response.raise_for_status()
+    data = (response.json() or {}).get("data") or {}
+    if not data or data.get("f43") in (None, "-"):
+        raise ValueError("Eastmoney returned no price")
+    name = data.get("f58") or normalized
+    return {
+        "symbol": normalized,
+        "name": name,
+        "price": _eastmoney_scaled(data.get("f43")),
+        "day_change_percent": _eastmoney_scaled(data.get("f170")),
+        "volume": _safe_float(data.get("f47")),
+        "turnover_rate": _eastmoney_scaled(data.get("f168")),
+        "pe": _eastmoney_scaled(data.get("f162")),
+        "market_cap": _safe_float(data.get("f116")),
+        "is_st": "ST" in str(name).upper(),
+        "currency": "CNY",
+        "data_source": "eastmoney",
+        "fallback_mock": False,
+    }
+
+
+def fetch_akshare_cn_stock(symbol: str) -> Dict[str, Any]:
     import akshare as ak
 
     normalized = normalize_cn_symbol(symbol)
@@ -56,8 +104,19 @@ def fetch_cn_stock(symbol: str) -> Dict[str, Any]:
         "market_cap": _safe_float(item.get("总市值")),
         "is_st": "ST" in str(item.get("名称") or "").upper(),
         "currency": "CNY",
+        "data_source": "akshare",
         "fallback_mock": False,
     }
+
+
+def fetch_cn_stock(symbol: str) -> Dict[str, Any]:
+    try:
+        return fetch_eastmoney_cn_stock(symbol)
+    except Exception as eastmoney_exc:
+        data = fetch_akshare_cn_stock(symbol)
+        data["partial_fallback"] = True
+        data["fallback_reason"] = eastmoney_exc.__class__.__name__
+        return data
 
 
 def scan_cn_stock(symbol: str) -> RiskScan:
@@ -81,9 +140,12 @@ def scan_cn_stock(symbol: str) -> RiskScan:
         price_text = f"¥{raw_data['price']:,.2f}" if raw_data.get("price") is not None else "未知"
         market_cap_text = f"¥{market_cap:,.0f}" if market_cap is not None else "未知"
         change_text = f"{day_change:.2f}%" if day_change is not None else "未知"
+        data_source = raw_data.get("data_source", "A股行情源")
         reasons.append(
-            f"akshare 已读取 {raw_data.get('name') or normalized}：价格 {price_text}，总市值 {market_cap_text}，涨跌幅 {change_text}，PE {pe if pe is not None else '未知'}"
+            f"{data_source} 已读取 {raw_data.get('name') or normalized}：价格 {price_text}，总市值 {market_cap_text}，涨跌幅 {change_text}，PE {pe if pe is not None else '未知'}"
         )
+        if raw_data.get("partial_fallback"):
+            reasons.append(f"东方财富直连暂时不可用，已切换到 akshare：{raw_data.get('fallback_reason')}")
 
     if is_st:
         score += 30
