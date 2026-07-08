@@ -337,9 +337,9 @@ curl http://127.0.0.1:8010/dna
   "conviction": 31,
   "emotion_control": 22,
   "independent_thinking": 18,
-  "kol_summary": "过去15条记录里，你15次受到KOL推荐影响。",
+  "kol_summary": "过去15次记录中，有15次包含 KOL、喊单或外部观点相关线索。这不等于你一定盲从，但需要确认这些信息有没有替代你的独立买入/做空计划。",
   "top_kol_influences": ["Crypto Rover", "Unknown KOL"],
-  "summary": "最近50条投资日记里，AI发现：你7次追高..."
+  "summary": "最近50条投资日记里，AI只根据你写下的内容做行为线索统计：FOMO/追涨相关表达7次..."
 }
 ```
 

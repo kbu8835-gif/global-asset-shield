@@ -56,7 +56,7 @@ def fallback_ai_coach(payload: ImmuneReportRequest, report: Dict[str, Any]) -> D
         coach_message = "如果真的要试，只能小仓位。先让计划保护你，再让观点参与市场。"
 
     if kol_detected:
-        behavior_pattern = "这次决策有明显 KOL 驱动。真正的风险不是这个 KOL 看没看对，而是你可能把判断外包给了别人。"
+        behavior_pattern = "这次输入里出现 KOL/喊单相关线索。真正要确认的不是这个 KOL 看没看对，而是你有没有自己的失效条件和退出计划。"
     elif emotion_score >= 70:
         behavior_pattern = "你现在可能不是在研究机会，而是在缓解错过或回本的焦虑。"
     elif bias_score >= 60:

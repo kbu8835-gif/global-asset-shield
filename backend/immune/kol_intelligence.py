@@ -590,10 +590,22 @@ def calculate_user_kol_dependency(user_id: int) -> KOLDependencyResponse:
             related += 1
             names.append("Unknown KOL")
     if total == 0:
-        return KOLDependencyResponse(kol_dependency=0, kol_related_count=0, total_decisions=0, top_kol_names=[], summary="还没有足够记录判断你是否依赖 KOL。")
+        return KOLDependencyResponse(
+            kol_dependency=0,
+            kol_related_count=0,
+            total_decisions=0,
+            top_kol_names=[],
+            summary="还没有足够记录判断是否出现 KOL/外部观点相关线索。",
+        )
     dependency = clamp_score(int(related / total * 100))
     top = [name for name, _ in Counter(names).most_common(5)]
-    summary = f"过去{total}次投资记录中，你有{related}次受到KOL或外部叙事影响。真正的风险不是某个KOL准不准，而是你正在把判断外包给别人。"
+    if related == 0:
+        summary = f"过去{total}次记录中，没有从用户输入或喊单记录里发现 KOL/外部观点相关线索。"
+    else:
+        summary = (
+            f"过去{total}次记录中，有{related}次包含 KOL、喊单或外部观点相关线索。"
+            "这不等于你一定盲从，但需要确认这些信息有没有替代你的独立买入/做空计划。"
+        )
     return KOLDependencyResponse(kol_dependency=dependency, kol_related_count=related, total_decisions=total, top_kol_names=top, summary=summary)
 
 
@@ -611,5 +623,5 @@ def build_kol_risk_summary(text: str, user_id: int) -> Optional[Dict[str, Any]]:
         "related_kol_profile": matched.model_dump() if matched else None,
         "kol_trust_score": matched.trust_score if matched else None,
         "kol_risk_level": matched.risk_level if matched else "Unknown",
-        "warning": "你这次买入理由高度依赖KOL推荐。请确认你是否有独立买入逻辑。",
+        "warning": "这次输入里出现 KOL/喊单相关线索。请确认它只是信息来源，而不是替代你的独立交易计划。",
     }

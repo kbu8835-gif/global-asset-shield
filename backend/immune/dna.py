@@ -1,4 +1,3 @@
-import json
 from typing import Any, Dict, List
 
 from database import get_connection, init_db
@@ -23,26 +22,24 @@ def _recent_entries(user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def _report_text(entry: Dict[str, Any]) -> str:
-    raw = entry.get("full_report_json") or ""
+def _user_decision_text(entry: Dict[str, Any]) -> str:
     parts = [
         entry.get("asset") or "",
         entry.get("user_intent") or "",
         entry.get("user_text") or "",
         entry.get("buy_reason") or "",
         entry.get("position_size") or "",
-        entry.get("summary") or "",
-        entry.get("final_decision") or "",
+        entry.get("risk_awareness") or "",
+        entry.get("worst_case_plan") or "",
+        entry.get("notes") or "",
+        entry.get("title") or "",
         entry.get("decision") or "",
     ]
-    if raw:
-        parts.append(raw)
-        try:
-            parsed = json.loads(raw)
-            parts.append(json.dumps(parsed, ensure_ascii=False))
-        except json.JSONDecodeError:
-            pass
     return " ".join(parts)
+
+
+def _system_decision_text(entry: Dict[str, Any]) -> str:
+    return " ".join([entry.get("summary") or "", entry.get("final_decision") or "", entry.get("decision") or ""])
 
 
 def _has_any(text: str, words: List[str]) -> bool:
@@ -93,16 +90,23 @@ def build_investment_dna(user_id: int) -> InvestmentDNAResponse:
             emotion_control=100,
             independent_thinking=100,
             summary="还没有投资日记。AI 需要至少一次免疫扫描，才能发现你的行为重复模式。",
-            kol_summary="还没有足够记录判断你是否依赖 KOL。",
+            kol_summary="还没有足够记录判断是否出现 KOL/外部观点相关线索。",
             top_kol_influences=[],
         )
 
-    texts = [_report_text(entry) for entry in entries]
+    texts = [_user_decision_text(entry) for entry in entries]
+    system_texts = [_system_decision_text(entry) for entry in entries]
     fomo_count = sum(_has_any(text, FOMO_WORDS) for text in texts)
     kol_count = sum(_has_any(text, KOL_WORDS) for text in texts)
     all_in_count = sum(_has_any(text, ALL_IN_WORDS) for text in texts)
     no_stop_count = sum(_has_any(text, NO_STOP_WORDS) for text in texts)
-    dont_buy_count = sum("Don't Buy" in text or "不建议买入" in text for text in texts)
+    dont_buy_count = sum(
+        "Don't Buy" in text
+        or "Don't Short" in text
+        or "不建议买入" in text
+        or "不建议做空" in text
+        for text in system_texts
+    )
 
     avg_emotion = _average(entries, "emotion_score")
     avg_bias = _average(entries, "bias_score")
@@ -129,13 +133,17 @@ def build_investment_dna(user_id: int) -> InvestmentDNAResponse:
     investor_type = _investor_type(fomo_rate, kol_rate, all_in_rate, avg_conviction)
     window = "最近50条" if total == 50 else f"最近{total}条"
     summary = (
-        f"{window}投资日记里，AI发现：你{fomo_count}次追高，{kol_count}次依赖KOL或外部叙事，"
-        f"{all_in_count}次出现高仓位冲动，{no_stop_count}次没有写出像样的止损计划，"
-        f"{dont_buy_count}次被系统拦在 Don't Buy。真正的问题不一定是市场，"
-        "而是你是否总是在上涨的时候相信别人，又在下跌的时候才想起风控。"
+        f"{window}投资日记里，AI只根据你写下的内容做行为线索统计："
+        f"FOMO/追涨相关表达{fomo_count}次，KOL/他人观点相关表达{kol_count}次，"
+        f"高仓位表达{all_in_count}次，退出计划不清晰表达{no_stop_count}次，"
+        f"系统给出 Don't Buy/Don't Short 建议{dont_buy_count}次。"
     )
+    if kol_count > 0 or kol_dependency > 40:
+        summary += "这不等于你一定在盲从，但说明记录里出现了外部观点线索；请确认它只是信息来源，而不是替代你的交易计划。"
+    else:
+        summary += "目前没有从用户输入中发现明显 KOL 依赖表达，重点仍是检查情绪升温时能否执行自己的交易规则。"
     if kol_dependency > 80:
-        summary += "真正的问题不一定是市场，而是你可能已经把自己的投资判断外包给了 KOL。"
+        summary += "如果这些 KOL/外部观点线索不是你的真实决策依据，可以回到笔记本修改原始记录，DNA 会随记录更新。"
 
     return InvestmentDNAResponse(
         investor_type=investor_type,
