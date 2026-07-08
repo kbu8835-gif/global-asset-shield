@@ -55,9 +55,10 @@ def test_notebook_crud_review_and_coach():
     assert review_response.status_code == 200
     reviewed = review_response.json()
     assert reviewed["status"] == "Reviewed"
-    assert reviewed["mistakes"]
-    assert reviewed["lesson"]
-    assert reviewed["next_action"]
+    assert reviewed["mistakes"] == "没有止损"
+    assert "BTC" not in reviewed["lesson"]
+    assert "最坏情况计划" in reviewed["lesson"]
+    assert "再看看" in reviewed["next_action"] or "退出条件" in reviewed["next_action"]
     assert "Review:" not in (reviewed["notes"] or "")
 
     delete_response = client.delete(f"/notebook/{notebook_id}")
@@ -66,3 +67,36 @@ def test_notebook_crud_review_and_coach():
 
     missing_response = client.get(f"/notebook/{notebook_id}")
     assert missing_response.status_code == 404
+
+
+def test_notebook_review_personalizes_short_squeeze_risk():
+    create_response = client.post(
+        "/notebook",
+        json={
+            "asset": "TSLA",
+            "asset_type": "stock",
+            "trade_direction": "short",
+            "title": "TSLA short",
+            "decision": "Wait",
+            "notes": "Valuation looks stretched.",
+            "buy_reason": "I want to short after a fast rally.",
+            "worst_case_plan": "If price rises 12%, I close the short.",
+            "risk_awareness": "Short squeeze and news risk.",
+            "position_size": "5%",
+        },
+    )
+    assert create_response.status_code == 200
+    notebook_id = create_response.json()["id"]
+
+    review_response = client.post(
+        f"/notebook/{notebook_id}/review",
+        json={"current_price": 320, "user_result_text": "结果继续上涨并出现逼空，我差点加空。"},
+    )
+
+    assert review_response.status_code == 200
+    reviewed = review_response.json()
+    assert reviewed["mistakes"] == "逆势补空"
+    assert "上涨后补空" in reviewed["lesson"]
+    assert "禁止补空" in reviewed["next_action"]
+
+    client.delete(f"/notebook/{notebook_id}")

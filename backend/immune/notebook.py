@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from database import get_connection, init_db
 from immune.coach import build_ai_coach
 from immune.direction import normalize_trade_direction
+from immune.outcome import analyze_review_outcome
 from schemas import (
     NotebookCreate,
     NotebookDetail,
@@ -256,23 +257,94 @@ def delete_notebook(notebook_id: int, user_id: int) -> bool:
     return True
 
 
+def _contains(text: str, words: List[str]) -> bool:
+    lowered = text.lower()
+    return any(word.lower() in lowered for word in words)
+
+
+def _direction_review_prefix(direction: str) -> str:
+    if direction == "short":
+        return "这次做空复盘的重点不是证明你看空有道理，而是检查你有没有提前写清楚上涨多少就认错。"
+    if direction == "watch":
+        return "这次观察复盘的重点不是后悔有没有开仓，而是检查你当时等待的触发条件是否清楚。"
+    return "这次做多复盘的重点不是证明你看多有道理，而是检查你有没有提前写清楚下跌后怎么办。"
+
+
+def _review_outcome_tone(text: str) -> str:
+    if _contains(text, ["亏", "跌", "-"]):
+        return "结果给了你一次压力测试。"
+    if _contains(text, ["赚", "涨", "盈利", "+"]):
+        return "结果看起来有利，但盈利不能自动证明过程正确。"
+    return "结果还不够量化，复盘最好写清楚涨跌幅、持仓动作和当时情绪。"
+
+
 def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: int) -> Optional[NotebookDetail]:
     current = get_notebook(notebook_id, user_id)
     if current is None:
         return None
     text = payload.user_result_text
-    mistake = "逻辑正确但市场波动"
-    if any(word in text + (current.user_text or "") for word in ["怕踏空", "追高", "涨很多", "起飞"]):
-        mistake = "FOMO 追高"
-    elif any(word in text + (current.buy_reason or "") for word in ["KOL", "大V", "喊单"]):
-        mistake = "KOL 盲从"
-    elif any(word in text + (current.position_size or "") for word in ["50%", "80%", "ALL", "满仓", "全部"]):
-        mistake = "仓位过重"
-    elif any(word in text + (current.worst_case_plan or "") for word in ["再看看", "没止损", "没有止损"]):
-        mistake = "没有止损"
+    combined = " ".join(
+        [
+            text,
+            current.user_text or "",
+            current.buy_reason or "",
+            current.position_size or "",
+            current.worst_case_plan or "",
+            current.risk_awareness or "",
+            current.notes or "",
+        ]
+    )
+    direction = normalize_trade_direction(current.trade_direction)
+    outcome = analyze_review_outcome(text, direction)
 
-    lesson = "真正的问题不是判断错了，而是你有没有提前设计亏损时怎么办。"
-    next_action = "下次买入前，先写失效条件、止损位置和最大可承受亏损。"
+    mistake = "逻辑正确但执行条件不够清楚"
+    if _contains(combined, ["再看看", "没止损", "没有止损", "没想好", "不知道怎么办"]):
+        mistake = "没有止损"
+    elif outcome:
+        mistake = outcome["mistake"]
+    elif _contains(combined, ["怕踏空", "追高", "涨很多", "起飞", "错过"]):
+        mistake = "FOMO 追高"
+    elif _contains(combined, ["KOL", "大V", "喊单", "老师", "群里", "朋友推荐"]):
+        mistake = "外部观点替代计划"
+    elif direction == "short" and _contains(combined, ["逼空", "反弹", "上涨", "爆仓", "加空"]):
+        mistake = "做空风险低估"
+    elif direction == "watch" and _contains(combined, ["后悔", "没买", "错过"]):
+        mistake = "观察条件不清"
+    elif _contains(current.position_size or "", ["50%", "80%", "100%", "ALL IN", "all-in", "满仓", "全部", "重仓"]) or _contains(
+        text,
+        ["all in", "满仓", "全部仓位", "重仓"],
+    ):
+        mistake = "仓位过重"
+
+    lesson_parts = [_direction_review_prefix(direction), _review_outcome_tone(text)]
+    if outcome:
+        lesson_parts.append(f"你描述的结果像是：{outcome['market']}后{outcome['behavior']}。{outcome['lesson']}")
+    if current.position_size:
+        lesson_parts.append(f"你当时写的仓位是 {current.position_size}，复盘时要先问这是不是让情绪变大的原因。")
+    if current.worst_case_plan:
+        lesson_parts.append(f"你当时的最坏情况计划是“{current.worst_case_plan}”，检查它是否真的能执行，而不是事后安慰。")
+    else:
+        lesson_parts.append("这条记录缺少最坏情况计划，所以复盘时最该补的是退出条件。")
+    lesson = " ".join(lesson_parts)
+
+    if direction == "short":
+        next_action = "下次做空前，先写：上涨多少止损、是否允许加空、最大亏损金额。写不出来，就不要开空。"
+    elif direction == "watch":
+        next_action = "下次观察前，先写：什么数据出现才行动，什么风险确认就继续等待。"
+    else:
+        next_action = "下次做多前，先写：失效条件、止损位置、最大可承受亏损和是否允许补仓。"
+    if outcome:
+        next_action = outcome["next_action"]
+
+    if mistake == "FOMO 追高":
+        next_action = "下次出现怕踏空时，先等一个冷静周期，再写清楚不买也能接受的理由。"
+    elif mistake == "外部观点替代计划":
+        next_action = "下次看到 KOL 或朋友观点时，必须先写自己的失效条件；写不出，就只能记录，不能开仓。"
+    elif mistake == "仓位过重":
+        next_action = "下次先把仓位上限写死。超过计划仓位的交易，一律延迟 24 小时。"
+    elif mistake == "没有止损":
+        next_action = "下次开仓前先写退出条件；如果只有“再看看”，这笔交易自动不合格。"
+
     return update_notebook(
         notebook_id,
         NotebookUpdate(
