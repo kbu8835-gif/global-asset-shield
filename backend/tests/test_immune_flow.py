@@ -330,6 +330,7 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
                 "sell_tax": 0,
                 "liquidity_change_24h": -3.2,
                 "pool_depth_warning": False,
+                "okx_url": "https://www.okx.com/web3/dex/pepe",
             },
         },
     )
@@ -343,6 +344,9 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
     assert "调用方 Agent 传入的 OKX 链上行情" in " ".join(data["risk_scan"]["risk_reasons"])
     assert "OKX 合约安全数据" in " ".join(data["risk_scan"]["risk_reasons"])
     assert "OKX Onchain OS Agent" in data["okx_ai_agent_result"]["market_snapshot"]
+    assert data["okx_ai_agent_result"]["market_link"] == "https://www.okx.com/web3/dex/pepe"
+    assert "交易对链接" not in data["data_confidence"]["missing"]
+    assert "https://www.okx.com/web3/dex/pepe" in data["okx_ai_agent_result"]["display_markdown"]
     assert "OKX 链上行情" in data["okx_ai_agent_result"]["display_markdown"]
 
 

@@ -54,6 +54,11 @@ def _market_snapshot(report: Dict[str, Any]) -> str:
     return f"数据源：{source}。" + "；".join(parts) + "。"
 
 
+def _market_link(report: Dict[str, Any]) -> str | None:
+    raw = report.get("risk_scan", {}).get("raw_data") or {}
+    return raw.get("pair_url") or raw.get("pool_url") or raw.get("okx_url") or raw.get("explorer_url")
+
+
 def _one_line_reason(report: Dict[str, Any]) -> str:
     decision = report.get("final_decision", "")
     emotion_score = int(report.get("emotion_scan", {}).get("emotion_score") or 0)
@@ -208,6 +213,7 @@ def _build_display_markdown(
             "",
             "## 市场数据",
             f"- {result.get('market_snapshot')}",
+            f"- 查看交易池/合约：{result.get('market_link')}" if result.get("market_link") else "",
             f"- 数据置信度：{confidence.get('score')} / {confidence.get('level')}",
             f"- 数据提示：{confidence.get('summary')}",
             "",
@@ -274,6 +280,7 @@ def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, An
         "asset_type": report.get("asset_type"),
         "direction": direction,
         "market_snapshot": _market_snapshot(report),
+        "market_link": _market_link(report),
         "data_confidence": {
             "score": confidence.get("score"),
             "level": confidence.get("level"),

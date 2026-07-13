@@ -135,6 +135,19 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "liquidityChangePercent24h",
     )
     pool_depth_value = _first_value(data, "pool_depth_usd", "poolDepthUsd", "pool_depth", "depth_usd")
+    pair_url = _first_value(
+        data,
+        "pair_url",
+        "pairUrl",
+        "pool_url",
+        "poolUrl",
+        "okx_url",
+        "okxUrl",
+        "token_url",
+        "tokenUrl",
+        "explorer_url",
+        "explorerUrl",
+    )
     owner_privilege = str(_first_value(data, "owner_privilege", "ownerPrivilege", "owner_risk", "ownerRisk") or "").lower()
     token_tags = data.get("token_tags") or data.get("tokenTags") or []
     token_tags = [str(tag).lower() for tag in token_tags] if isinstance(token_tags, list) else [str(token_tags).lower()]
@@ -187,6 +200,7 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "market_cap": _to_float(_first_value(data, "market_cap", "marketCap", "fdv")),
         "liquidity": _to_float(_first_value(data, "liquidity", "liquidity_usd", "liquidityUsd")),
         "volume24h": _to_float(_first_value(data, "volume24h", "volume_24h", "volume24H", "volume", "h24_volume")),
+        "pair_url": pair_url,
         "holders": _to_float(holders_value) if holders_value is not None else None,
         "risk_control_level": _to_float(risk_value, -1) if risk_value is not None else None,
         "top10_hold_percent": _to_float(top10_value) if top10_value is not None else None,
@@ -315,7 +329,7 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
                 "fdv": fdv,
                 "liquidity": liquidity,
                 "volume24h": volume24h,
-                "pair_url": None,
+                "pair_url": okx_data.get("pair_url"),
                 "fallback_mock": False,
                 "primary_data_source": okx_data.get("primary_data_source") or "okx_onchainos",
             }

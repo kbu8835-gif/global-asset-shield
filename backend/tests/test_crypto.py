@@ -115,11 +115,13 @@ def test_crypto_scanner_uses_external_okx_agent_data(monkeypatch):
             "sell_tax": 0,
             "liquidity_change_24h": -3.2,
             "pool_depth_warning": False,
+            "okx_url": "https://www.okx.com/web3/dex/pepe",
         },
     )
 
     assert result.raw_data["primary_data_source"] == "external_okx_agent"
     assert result.raw_data["external_market_data_used"] is True
+    assert result.raw_data["pair_url"] == "https://www.okx.com/web3/dex/pepe"
     assert result.raw_data["okx_onchain"]["holders"] == 568_148
     assert result.raw_data["security_source"] == "OKX Onchain OS Agent"
     assert result.raw_data["security_summary"]["is_honeypot"] is False
