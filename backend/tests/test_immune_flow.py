@@ -63,6 +63,11 @@ def test_immune_report_fomo_saves_journal(monkeypatch):
     assert data["okx_ai_agent_result"]["decision"] == data["final_decision"]
     assert data["okx_ai_agent_result"]["mini_notebook"]["what_user_wrote"]["position_size"] == "50%"
     assert data["okx_ai_agent_result"]["must_answer_before_trade"]
+    assert data["okx_ai_agent_result"]["recommended_display_field"] == "okx_ai_agent_result.display_markdown"
+    assert data["okx_ai_agent_result"]["short_answer"].startswith(data["final_decision"])
+    assert "# " in data["okx_ai_agent_result"]["display_markdown"]
+    assert "## 市场数据" in data["okx_ai_agent_result"]["display_markdown"]
+    assert "## 下单前必须回答" in data["okx_ai_agent_result"]["display_markdown"]
 
 
 def test_immune_report_uses_historical_dna_patterns(monkeypatch):

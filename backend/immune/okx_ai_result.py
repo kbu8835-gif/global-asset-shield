@@ -70,6 +70,74 @@ def _one_line_reason(report: Dict[str, Any]) -> str:
     return "现在最好的动作不是立刻交易，而是补全证据和退出规则。"
 
 
+def _format_list(items: List[str], fallback: str) -> str:
+    values = [item for item in items if item]
+    if not values:
+        values = [fallback]
+    return "\n".join(f"{index}. {item}" for index, item in enumerate(values, start=1))
+
+
+def _format_bullets(items: List[str], fallback: str) -> str:
+    values = [item for item in items if item]
+    if not values:
+        values = [fallback]
+    return "\n".join(f"- {item}" for item in values)
+
+
+def _build_display_markdown(
+    payload: ImmuneReportRequest,
+    result: Dict[str, Any],
+    report: Dict[str, Any],
+    what_is_missing: List[str],
+) -> str:
+    asset = result.get("asset") or payload.asset.upper()
+    decision = result.get("decision") or report.get("final_decision")
+    headline = result.get("headline") or _one_line_reason(report)
+    confidence = result.get("data_confidence") or {}
+    behavior = result.get("behavior_scan") or {}
+    top_risks = _items(result.get("top_risks"))[:4]
+    must_answer = _items(result.get("must_answer_before_trade"))[:3]
+    emotions = _items(behavior.get("detected_emotions"))[:4]
+    biases = _items(behavior.get("top_biases"))[:3]
+
+    return "\n".join(
+        [
+            f"# {decision} {asset}",
+            "",
+            headline,
+            "",
+            "## 市场数据",
+            f"- {result.get('market_snapshot')}",
+            f"- 数据置信度：{confidence.get('score')} / {confidence.get('level')}",
+            f"- 数据提示：{confidence.get('summary')}",
+            "",
+            "## 为什么现在不该冲动",
+            _format_list(top_risks, "当前证据还不足以支持重仓开仓。"),
+            "",
+            "## 行为风险",
+            f"- 情绪分：{behavior.get('emotion_score')}",
+            f"- 识别情绪：{', '.join(emotions) if emotions else '未触发明显情绪标签'}",
+            f"- 偏差分：{behavior.get('bias_score')}",
+            f"- 主要偏差：{'; '.join(biases) if biases else '未触发明显偏差'}",
+            f"- KOL 提醒：{behavior.get('kol_warning') or '未匹配到具体 KOL 画像，但仍要确认这是不是外部叙事驱动。'}",
+            "",
+            "## 下单前必须回答",
+            _format_bullets(must_answer, "什么事实出现后，你会承认自己错了？"),
+            "",
+            "## 迷你投资笔记",
+            f"- 开仓理由：{payload.buy_reason or payload.user_intent or '未填写'}",
+            f"- 仓位规模：{payload.position_size or '未填写'}",
+            f"- 最坏情况计划：{payload.worst_case_plan or '未填写'}",
+            f"- 当前缺口：{'; '.join(what_is_missing[:4])}",
+            "",
+            "## 下一步",
+            f"{result.get('next_step')}",
+            "",
+            "这不是预测价格的工具。它帮你在下单前停一下，在复盘后变聪明一点。",
+        ]
+    )
+
+
 def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, Any]) -> Dict[str, Any]:
     direction = direction_label(report.get("trade_direction") or payload.trade_direction)
     risk_reasons = _items(report.get("risk_scan", {}).get("risk_reasons"))[:4]
@@ -95,7 +163,7 @@ def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, An
     if not what_is_missing:
         what_is_missing.append("继续保持：理由、仓位、反向情景和复盘条件都要写清楚。")
 
-    return {
+    result = {
         "service_name": "Investment Immune Scan",
         "designed_for": "OKX.AI A2MCP",
         "headline": _one_line_reason(report),
@@ -141,3 +209,11 @@ def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, An
         "next_step": coach.get("next_action") or "先等待 24 小时，再重新扫描同一个资产。",
         "full_product_url": "https://global-asset-shield.onrender.com",
     }
+    result["short_answer"] = f"{result['decision']} {result['asset']}。{result['headline']}"
+    result["recommended_display_field"] = "okx_ai_agent_result.display_markdown"
+    result["demo_ready_summary"] = (
+        f"{result['decision']} {result['asset']}：{result['headline']} "
+        f"系统已综合市场数据、情绪风险、认知偏差、仓位风险和历史 DNA，给出下单前免疫提醒。"
+    )
+    result["display_markdown"] = _build_display_markdown(payload, result, report, what_is_missing)
+    return result
