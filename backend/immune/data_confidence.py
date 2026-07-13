@@ -37,7 +37,7 @@ def build_data_confidence(asset_type: str, risk_scan: Dict[str, Any]) -> Dict[st
             ("fdv", "FDV/估值"),
             ("volume24h", "24h 成交量"),
             ("pair_url", "交易对链接"),
-            ("security_summary", "GoPlus 合约安全"),
+            ("security_summary", "合约安全"),
         ]
         base_summary = "Crypto 报告依赖交易对流动性、成交量和合约安全数据。"
     elif asset_type == "cn_stock":

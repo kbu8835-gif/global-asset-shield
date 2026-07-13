@@ -64,6 +64,10 @@ def _tax(value: Any) -> float:
         return 0
 
 
+def _normalized_tax(data: Dict[str, Any], *keys: str) -> float:
+    return round(_tax(_first_value(data, *keys)), 4)
+
+
 def _security_summary(security: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "is_honeypot": _flag(security.get("is_honeypot")),
@@ -123,6 +127,54 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
     bundle_value = _first_value(data, "bundle_holding_percent", "bundleHoldingPercent")
     suspicious_value = _first_value(data, "suspicious_holding_percent", "suspiciousHoldingPercent")
     holders_value = _first_value(data, "holders", "holder_count", "holderCount")
+    liquidity_change_value = _first_value(
+        data,
+        "liquidity_change_24h",
+        "liquidityChange24h",
+        "liquidity_change_percent_24h",
+        "liquidityChangePercent24h",
+    )
+    pool_depth_value = _first_value(data, "pool_depth_usd", "poolDepthUsd", "pool_depth", "depth_usd")
+    owner_privilege = str(_first_value(data, "owner_privilege", "ownerPrivilege", "owner_risk", "ownerRisk") or "").lower()
+    token_tags = data.get("token_tags") or data.get("tokenTags") or []
+    token_tags = [str(tag).lower() for tag in token_tags] if isinstance(token_tags, list) else [str(token_tags).lower()]
+    security_summary = {
+        "is_honeypot": _flag(_first_value(data, "is_honeypot", "honeypot", "isHoneypot")),
+        "is_blacklisted": _flag(_first_value(data, "is_blacklisted", "blacklist", "isBlacklisted")),
+        "is_mintable": _flag(_first_value(data, "is_mintable", "mintable", "can_mint", "isMintable")),
+        "is_proxy": _flag(_first_value(data, "is_proxy", "proxy", "isProxy")),
+        "can_take_back_ownership": _flag(
+            _first_value(data, "can_take_back_ownership", "canTakeBackOwnership", "can_take_ownership")
+        )
+        or owner_privilege in {"high", "strong", "danger", "dangerous"},
+        "owner_change_balance": _flag(_first_value(data, "owner_change_balance", "ownerChangeBalance", "can_change_balance")),
+        "buy_tax_percent": _normalized_tax(data, "buy_tax", "buyTax", "buy_tax_percent", "buyTaxPercent"),
+        "sell_tax_percent": _normalized_tax(data, "sell_tax", "sellTax", "sell_tax_percent", "sellTaxPercent"),
+        "is_open_source": not _flag(_first_value(data, "not_open_source", "is_closed_source", "closedSource")),
+        "owner_privilege": owner_privilege or None,
+        "source": source,
+    }
+    has_security_fields = any(
+        key in data
+        for key in [
+            "is_honeypot",
+            "honeypot",
+            "isHoneypot",
+            "is_blacklisted",
+            "blacklist",
+            "isBlacklisted",
+            "is_mintable",
+            "isMintable",
+            "is_proxy",
+            "isProxy",
+            "owner_privilege",
+            "ownerPrivilege",
+            "buy_tax",
+            "buyTax",
+            "sell_tax",
+            "sellTax",
+        ]
+    )
 
     return {
         "source": source,
@@ -142,7 +194,13 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "bundle_holding_percent": _to_float(bundle_value) if bundle_value is not None else None,
         "suspicious_holding_percent": _to_float(suspicious_value) if suspicious_value is not None else None,
         "is_internal": data.get("is_internal") if "is_internal" in data else data.get("isInternal"),
-        "token_tags": data.get("token_tags") or data.get("tokenTags") or [],
+        "token_tags": token_tags,
+        "security_summary": security_summary if has_security_fields else None,
+        "liquidity_change_24h": _to_float(liquidity_change_value) if liquidity_change_value is not None else None,
+        "pool_depth_usd": _to_float(pool_depth_value) if pool_depth_value is not None else None,
+        "pool_depth_warning": _flag(_first_value(data, "pool_depth_warning", "poolDepthWarning", "depth_warning")),
+        "liquidity_locked": _flag(_first_value(data, "liquidity_locked", "liquidityLocked")),
+        "liquidity_lock_percent": _to_float(_first_value(data, "liquidity_lock_percent", "liquidityLockPercent")),
         "raw_external_market_data": data,
         "primary_data_source": primary_source,
     }
@@ -155,6 +213,9 @@ def _apply_okx_onchain_risk(score: int, reasons: list[str], okx_data: Dict[str, 
     bundle_hold = okx_data.get("bundle_holding_percent")
     suspicious_hold = okx_data.get("suspicious_holding_percent")
     token_tags = okx_data.get("token_tags") or []
+    security = okx_data.get("security_summary") or {}
+    liquidity_change_24h = okx_data.get("liquidity_change_24h")
+    pool_depth_usd = okx_data.get("pool_depth_usd")
 
     if risk_level_value is not None:
         if risk_level_value >= 4:
@@ -188,12 +249,35 @@ def _apply_okx_onchain_risk(score: int, reasons: list[str], okx_data: Dict[str, 
         score += 10
         reasons.append("OKX 标记该资产可能存在内盘特征，外部买入者容易处于信息劣势")
 
-    if "honeypot" in token_tags:
+    if security.get("is_honeypot") or "honeypot" in token_tags:
         score += 40
-        reasons.append("OKX tokenTags 出现 honeypot，可能存在买入后难以卖出的风险")
-    if "lowLiquidity" in token_tags:
+        reasons.append("OKX 安全数据标记疑似蜜罐，可能存在买入后难以卖出的风险")
+    if security.get("is_blacklisted"):
+        score += 30
+        reasons.append("OKX 安全数据提示黑名单风险，地址可能被限制交易")
+    if security.get("is_mintable"):
+        score += 15
+        reasons.append("OKX 安全数据提示合约可能存在增发权限，持有人可能被稀释")
+    if security.get("is_proxy"):
+        score += 10
+        reasons.append("OKX 安全数据提示代理合约风险，合约逻辑可能被升级改变")
+    if security.get("can_take_back_ownership") or security.get("owner_change_balance"):
+        score += 15
+        reasons.append("OKX 安全数据提示 owner 权限较强，可能影响持有人余额或合约控制权")
+    if security.get("buy_tax_percent", 0) > 10 or security.get("sell_tax_percent", 0) > 10:
+        score += 15
+        reasons.append(
+            f"OKX 安全数据提示买卖税偏高：买税 {security.get('buy_tax_percent', 0)}%，卖税 {security.get('sell_tax_percent', 0)}%"
+        )
+    if "lowliquidity" in token_tags or "low_liquidity" in token_tags:
         score += 20
         reasons.append("OKX tokenTags 出现 lowLiquidity，退出深度不足")
+    if liquidity_change_24h is not None and liquidity_change_24h < -25:
+        score += 15
+        reasons.append(f"OKX 显示 24h 流动性下降约 {abs(liquidity_change_24h):.2f}%，需要警惕撤池或深度变薄")
+    if okx_data.get("pool_depth_warning") or (pool_depth_usd is not None and pool_depth_usd < 50_000):
+        score += 15
+        reasons.append("OKX 池子深度提示不足，较小资金也可能造成明显滑点")
 
     return score
 
@@ -237,6 +321,10 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
             }
         )
         raw_data["okx_onchain"] = okx_data
+        raw_data["okx_security_summary"] = okx_data.get("security_summary")
+        raw_data["liquidity_change_24h"] = okx_data.get("liquidity_change_24h")
+        raw_data["pool_depth_usd"] = okx_data.get("pool_depth_usd")
+        raw_data["pool_depth_warning"] = okx_data.get("pool_depth_warning")
 
         okx_price = okx_data.get("price_usd")
         okx_liquidity = okx_data.get("liquidity")
@@ -317,16 +405,24 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
         score += 15
         reasons.append("24 小时成交量低于 10,000 美元，成交质量偏弱")
 
-    chain_for_security = raw_data.get("chain")
-    try:
-        security = fetch_goplus_security(token_address or token, chain_for_security)
-    except Exception as exc:
+    external_security_summary = raw_data.get("okx_security_summary") if raw_data.get("external_market_data_used") else None
+    if external_security_summary:
         security = None
-        raw_data["goplus_error"] = exc.__class__.__name__
-    security_summary = _security_summary(security) if security else None
+        security_summary = external_security_summary
+        raw_data["security_source"] = "OKX Onchain OS Agent"
+    else:
+        chain_for_security = raw_data.get("chain")
+        try:
+            security = fetch_goplus_security(token_address or token, chain_for_security)
+        except Exception as exc:
+            security = None
+            raw_data["goplus_error"] = exc.__class__.__name__
+        security_summary = _security_summary(security) if security else None
     raw_data["goplus_security"] = security
     raw_data["security_summary"] = security_summary
-    if security is None:
+    if external_security_summary:
+        reasons.append("已使用调用方 Agent 传入的 OKX 合约安全数据")
+    elif security is None:
         score += 10
         reasons.append("没有 GoPlus 安全数据，合约权限、蜜罐和黑名单风险未知")
     else:

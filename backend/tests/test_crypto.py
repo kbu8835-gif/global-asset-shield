@@ -106,10 +106,62 @@ def test_crypto_scanner_uses_external_okx_agent_data(monkeypatch):
             "holders": 568_148,
             "risk_control_level": 2,
             "top10_hold_percent": 8.0739,
+            "is_honeypot": False,
+            "is_blacklisted": False,
+            "is_mintable": False,
+            "is_proxy": False,
+            "owner_privilege": "low",
+            "buy_tax": 0,
+            "sell_tax": 0,
+            "liquidity_change_24h": -3.2,
+            "pool_depth_warning": False,
         },
     )
 
     assert result.raw_data["primary_data_source"] == "external_okx_agent"
     assert result.raw_data["external_market_data_used"] is True
     assert result.raw_data["okx_onchain"]["holders"] == 568_148
+    assert result.raw_data["security_source"] == "OKX Onchain OS Agent"
+    assert result.raw_data["security_summary"]["is_honeypot"] is False
     assert any("调用方 Agent 传入的 OKX 链上行情" in reason for reason in result.risk_reasons)
+    assert any("OKX 合约安全数据" in reason for reason in result.risk_reasons)
+
+
+def test_crypto_scanner_scores_external_okx_security_risks(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
+
+    result = scan_crypto(
+        "RISKY",
+        external_market_data={
+            "source": "OKX Onchain OS Agent",
+            "symbol": "RISKY",
+            "price": 0.01,
+            "market_cap": 20_000_000,
+            "liquidity": 40_000,
+            "volume24h": 5000,
+            "holders": 100,
+            "risk_control_level": 4,
+            "top10_hold_percent": 55,
+            "is_honeypot": True,
+            "is_blacklisted": True,
+            "is_mintable": True,
+            "is_proxy": True,
+            "owner_privilege": "high",
+            "buy_tax": 12,
+            "sell_tax": 15,
+            "liquidity_change_24h": -35,
+            "pool_depth_warning": True,
+        },
+    )
+
+    reasons = " ".join(result.risk_reasons)
+
+    assert result.risk_score == 100
+    assert "蜜罐" in reasons
+    assert "黑名单" in reasons
+    assert "owner 权限" in reasons
+    assert "买卖税偏高" in reasons
+    assert "流动性下降" in reasons
+    assert "池子深度" in reasons

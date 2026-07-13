@@ -321,6 +321,15 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
                 "holders": 568_148,
                 "risk_control_level": 2,
                 "top10_hold_percent": 8.0739,
+                "is_honeypot": False,
+                "is_blacklisted": False,
+                "is_mintable": False,
+                "is_proxy": False,
+                "owner_privilege": "low",
+                "buy_tax": 0,
+                "sell_tax": 0,
+                "liquidity_change_24h": -3.2,
+                "pool_depth_warning": False,
             },
         },
     )
@@ -330,6 +339,8 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
     assert response.status_code == 200
     assert data["risk_scan"]["raw_data"]["primary_data_source"] == "external_okx_agent"
     assert data["risk_scan"]["raw_data"]["external_market_data_used"] is True
+    assert data["risk_scan"]["raw_data"]["security_source"] == "OKX Onchain OS Agent"
     assert "调用方 Agent 传入的 OKX 链上行情" in " ".join(data["risk_scan"]["risk_reasons"])
+    assert "OKX 合约安全数据" in " ".join(data["risk_scan"]["risk_reasons"])
     assert "OKX Onchain OS Agent" in data["okx_ai_agent_result"]["market_snapshot"]
     assert "OKX 链上行情" in data["okx_ai_agent_result"]["display_markdown"]
