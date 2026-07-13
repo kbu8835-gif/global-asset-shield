@@ -84,8 +84,6 @@ function planCompletion(draft: NotebookDetail) {
     draft.notes,
     draft.buy_reason,
     draft.risk_awareness,
-    draft.favorable_plan,
-    draft.sideways_plan,
     draft.worst_case_plan,
   ];
   const completed = fields.filter(hasText).length;
@@ -97,8 +95,6 @@ function missingPlanItems(draft: NotebookDetail) {
     ["为什么关注它", draft.notes],
     ["交易逻辑", draft.buy_reason],
     ["失效条件", draft.risk_awareness],
-    ["有利情况计划", draft.favorable_plan],
-    ["横盘等待计划", draft.sideways_plan],
     ["亏损退出计划", draft.worst_case_plan],
   ];
   return items.filter(([, value]) => !hasText(value)).map(([label]) => label);
@@ -484,13 +480,11 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
                   </div>
                   <div className="text-right text-sm text-slate-400">完整度 {currentCompletion}%</div>
                 </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-3">
+                <div className="mt-4 grid gap-2 md:grid-cols-4">
                     {[
                       ["为什么关注它", draft.notes],
                       ["交易逻辑", draft.buy_reason],
                       ["失效条件", draft.risk_awareness],
-                      [draft.trade_direction === "short" ? "盈利空单计划" : "盈利处理计划", draft.favorable_plan],
-                      ["横盘计划", draft.sideways_plan],
                       [draft.trade_direction === "short" ? "亏损止损计划" : "亏损退出计划", draft.worst_case_plan],
                     ].map(([label, value]) => (
                       <div
@@ -577,31 +571,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
                 </label>
                 <label className="block">
                   <div className="mb-2 text-sm font-semibold text-white">
-                    4. {draft.trade_direction === "short" ? "如果下跌盈利，我怎么处理空单？" : "如果上涨盈利，我怎么处理？"}
-                  </div>
-                  <textarea
-                    className={areaClass}
-                    value={draft.favorable_plan || ""}
-                    onChange={(event) => patchDraft({ favorable_plan: event.target.value })}
-                    placeholder={
-                      draft.trade_direction === "short"
-                        ? "例如：下跌到目标位分批止盈，不临时加空。"
-                        : "例如：上涨后分批止盈，不临时加仓。"
-                    }
-                  />
-                </label>
-                <label className="block">
-                  <div className="mb-2 text-sm font-semibold text-white">5. 如果横盘没有结果，我等多久？</div>
-                  <textarea
-                    className={areaClass}
-                    value={draft.sideways_plan || ""}
-                    onChange={(event) => patchDraft({ sideways_plan: event.target.value })}
-                    placeholder="例如：横盘 3 天没有新证据就重新评估，不因为无聊加仓。"
-                  />
-                </label>
-                <label className="block">
-                  <div className="mb-2 text-sm font-semibold text-white">
-                    6. {draft.trade_direction === "short" ? "如果上涨亏损，我怎么认错？" : "如果下跌亏损，我怎么退出？"}
+                    4. {draft.trade_direction === "short" ? "如果上涨亏损，我怎么认错？" : "如果下跌亏损，我怎么退出？"}
                   </div>
                   <textarea
                     className={areaClass}
@@ -614,6 +584,33 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
                     }
                   />
                 </label>
+              </div>
+
+              <div className="mt-6 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+                <h3 className="text-lg font-semibold text-white">对话扫描已记录的三情景计划</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  这部分来自第一步对话扫描，用来防止临场改规则。Notebook 这里只展示，不再编辑。
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {[
+                    [
+                      draft.trade_direction === "short" ? "盈利：下跌后怎么处理空单" : "盈利：上涨后怎么处理",
+                      draft.favorable_plan,
+                    ],
+                    ["横盘：没有结果最多等多久", draft.sideways_plan],
+                    [
+                      draft.trade_direction === "short" ? "亏损：上涨后怎么认错" : "亏损：下跌后怎么退出",
+                      draft.worst_case_plan,
+                    ],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+                      <p className="mt-3 min-h-16 text-sm leading-6 text-slate-200">
+                        {hasText(String(value ?? "")) ? String(value) : "还没有记录。下一次从对话扫描进入时补齐。"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="mt-6 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
