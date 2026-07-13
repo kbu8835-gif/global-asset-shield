@@ -1,8 +1,8 @@
 import json
+import re
 from typing import Any, Dict
 
 from immune.direction import direction_label, normalize_trade_direction
-from immune.outcome import outcome_rehearsal
 
 
 def _load_report(entry: Dict[str, Any]) -> Dict[str, Any]:
@@ -24,6 +24,19 @@ def _has_any(text: str, words: list[str]) -> bool:
     return any(word.lower() in lowered for word in words)
 
 
+def _is_actionable_plan(text: str) -> bool:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return False
+    if _has_any(normalized, ["再看看", "看情况", "到时候", "随缘", "不知道", "没想好"]):
+        return False
+    if re.search(r"\d+(\.\d+)?\s*%", normalized):
+        return True
+    if re.search(r"\d+(\.\d+)?", normalized) and _has_any(normalized, ["止损", "止盈", "退出", "平仓", "减仓", "加仓", "天", "小时"]):
+        return True
+    return _has_any(normalized, ["止损", "止盈", "退出", "平仓", "减仓", "不加仓", "不补仓", "重新评估"])
+
+
 def build_ai_coach(entry: Dict[str, Any]) -> str:
     report = _load_report(entry)
     asset = entry.get("asset") or "这个资产"
@@ -37,6 +50,12 @@ def build_ai_coach(entry: Dict[str, Any]) -> str:
     worst_case = entry.get("worst_case_plan") or entry.get("notes") or ""
     favorable_plan = entry.get("favorable_plan") or ""
     sideways_plan = entry.get("sideways_plan") or ""
+    high_position = _has_any(position_size, ["50%", "80%", "100%", "ALL IN", "all-in", "满仓", "全部", "重仓"])
+    has_actionable_scenario_plan = (
+        _is_actionable_plan(favorable_plan)
+        and _is_actionable_plan(sideways_plan)
+        and _is_actionable_plan(worst_case)
+    )
     user_text = " ".join(
         str(entry.get(field) or "")
         for field in [
@@ -59,6 +78,8 @@ def build_ai_coach(entry: Dict[str, Any]) -> str:
         lines.append("这条笔记里偏见信号偏强，先确认你是不是只在寻找支持自己观点的信息。")
     elif risk_score >= 70:
         lines.append("资产风险分已经偏高，任何方向都不能用大仓位去赌一次判断。")
+    elif has_actionable_scenario_plan:
+        lines.append("你的三情景计划已经有可执行边界，接下来真正的风险是仓位和执行纪律。")
     else:
         lines.append("结构比冲动交易好，但还需要把错误条件写得更具体。")
 
@@ -87,20 +108,23 @@ def build_ai_coach(entry: Dict[str, Any]) -> str:
     if conviction_score <= 40:
         lines.append(f"当前信念分只有 {conviction_score}，说明这还不像一套完整交易计划。")
 
-    if _has_any(position_size, ["50%", "80%", "100%", "ALL IN", "all-in", "满仓", "全部", "重仓"]):
+    if high_position:
         lines.append(f"你写的仓位是 {position_size}。仓位过大时，普通波动会变成情绪事故。")
 
-    if not worst_case or "再看看" in worst_case:
+    if not worst_case or _has_any(worst_case, ["再看看", "看情况", "到时候", "不知道", "没想好"]):
         lines.append("最需要补的一句是：价格到哪里、事实变成什么样，我就承认这笔交易失效。")
-    elif len(str(worst_case)) < 12:
-        lines.append(f"你的最坏情况计划是“{worst_case}”，还不够可执行，最好写成具体价格、比例或条件。")
-    if favorable_plan and len(str(favorable_plan)) < 8:
-        lines.append(f"你的有利情况计划是“{favorable_plan}”，还不够具体，最好写清楚分批止盈、继续持有或移动止损条件。")
-    if sideways_plan and len(str(sideways_plan)) < 8:
+    elif not _is_actionable_plan(worst_case):
+        lines.append(f"你的最坏情况计划是“{worst_case}”，还需要写成明确动作，比如止损、平仓、退出或重新评估条件。")
+    if favorable_plan and not _is_actionable_plan(favorable_plan):
+        lines.append(f"你的有利情况计划是“{favorable_plan}”，还需要写清楚一个动作：止盈、减仓、继续持有或不再加仓。")
+    if sideways_plan and not _is_actionable_plan(sideways_plan):
         lines.append(f"你的横盘计划是“{sideways_plan}”，还不够具体，最好写清楚最长等待时间和重新评估条件。")
 
     decision_reason = report.get("decision_reason")
     if decision_reason:
-        lines.append(str(decision_reason))
+        reason = str(decision_reason)
+        if high_position and "风险和情绪未进入高压区" in reason:
+            reason = reason.replace("信念结构较完整，且风险和情绪未进入高压区", "计划结构较完整，但 ALL IN 仓位本身已经是主要风险")
+        lines.append(reason)
 
     return "\n\n".join(lines)
