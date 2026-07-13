@@ -291,3 +291,45 @@ def test_immune_report_watch_direction_returns_observation_plan(monkeypatch):
     assert data["final_decision"] == "🟡 Wait"
     assert data["observation_plan"]["signal_to_watch"] == "成交量和流动性改善"
     assert "观望" in data["observation_plan"]["summary"]
+
+
+def test_immune_report_accepts_external_okx_market_data(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
+
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "PEPE",
+            "asset_type": "crypto",
+            "trade_direction": "long",
+            "user_intent": "KOL推荐",
+            "user_text": "看到KOL推荐，最近涨很多，怕错过",
+            "buy_reason": "KOL推荐，感觉马上起飞",
+            "risk_awareness": "不太清楚",
+            "worst_case_plan": "跌10%止损",
+            "position_size": "50%",
+            "horizon": "短线",
+            "external_market_data": {
+                "source": "OKX Onchain OS Agent",
+                "symbol": "PEPE",
+                "price": 0.000002741,
+                "market_cap": 1_130_000_000,
+                "liquidity": 20_490_000,
+                "volume24h": 740_190,
+                "holders": 568_148,
+                "risk_control_level": 2,
+                "top10_hold_percent": 8.0739,
+            },
+        },
+    )
+
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["risk_scan"]["raw_data"]["primary_data_source"] == "external_okx_agent"
+    assert data["risk_scan"]["raw_data"]["external_market_data_used"] is True
+    assert "调用方 Agent 传入的 OKX 链上行情" in " ".join(data["risk_scan"]["risk_reasons"])
+    assert "OKX Onchain OS Agent" in data["okx_ai_agent_result"]["market_snapshot"]
+    assert "OKX 链上行情" in data["okx_ai_agent_result"]["display_markdown"]

@@ -11,6 +11,8 @@ def _as_dict(result) -> dict:
 def run_risk_scan(payload: ImmuneReportRequest) -> dict:
     asset_type = payload.asset_type.lower()
     if asset_type == "crypto":
+        if payload.external_market_data:
+            return _as_dict(scan_crypto(payload.asset, external_market_data=payload.external_market_data))
         return _as_dict(scan_crypto(payload.asset))
     if asset_type == "stock":
         return _as_dict(scan_stock(payload.asset))

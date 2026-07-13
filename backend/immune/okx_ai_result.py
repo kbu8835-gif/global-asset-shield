@@ -27,7 +27,13 @@ def _top_biases(report: Dict[str, Any]) -> List[str]:
 
 def _market_snapshot(report: Dict[str, Any]) -> str:
     raw = report.get("risk_scan", {}).get("raw_data") or {}
-    source = raw.get("primary_data_source") or raw.get("source") or raw.get("data_source") or "fallback"
+    source = (
+        raw.get("external_market_data_source")
+        or raw.get("primary_data_source")
+        or raw.get("source")
+        or raw.get("data_source")
+        or "fallback"
+    )
     parts: List[str] = []
 
     price = raw.get("price_usd") or raw.get("price")

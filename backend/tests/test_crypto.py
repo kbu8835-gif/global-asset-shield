@@ -87,3 +87,29 @@ def test_crypto_scanner_okx_onchain_enrichment(monkeypatch):
     assert result.raw_data["primary_data_source"] == "okx_onchainos"
     assert result.raw_data["okx_onchain"]["holders"] == 568_148
     assert any("OKX Onchain OS" in reason for reason in result.risk_reasons)
+
+
+def test_crypto_scanner_uses_external_okx_agent_data(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call dexscreener")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
+
+    result = scan_crypto(
+        "PEPE",
+        external_market_data={
+            "source": "OKX Onchain OS Agent",
+            "symbol": "PEPE",
+            "price": 0.000002741,
+            "market_cap": 1_130_000_000,
+            "liquidity": 20_490_000,
+            "volume24h": 740_190,
+            "holders": 568_148,
+            "risk_control_level": 2,
+            "top10_hold_percent": 8.0739,
+        },
+    )
+
+    assert result.raw_data["primary_data_source"] == "external_okx_agent"
+    assert result.raw_data["external_market_data_used"] is True
+    assert result.raw_data["okx_onchain"]["holders"] == 568_148
+    assert any("调用方 Agent 传入的 OKX 链上行情" in reason for reason in result.risk_reasons)

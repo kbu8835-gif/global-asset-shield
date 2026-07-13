@@ -70,6 +70,7 @@ class ImmuneReportRequest(BaseModel):
     sideways_plan: Optional[str] = None
     position_size: Optional[str] = None
     horizon: Optional[str] = None
+    external_market_data: Optional[Dict[str, Any]] = None
 
 
 class ImmuneReportResponse(BaseModel):

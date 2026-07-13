@@ -94,6 +94,60 @@ def _mock_pair(token: str) -> Dict[str, Any]:
     }
 
 
+def _first_value(data: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _to_float(value: Any, default: float = 0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_external_market_data(token: str, external_market_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not external_market_data:
+        return None
+    data = dict(external_market_data)
+    source = str(data.get("source") or data.get("data_source") or data.get("provider") or "external_market_data")
+    source_lower = source.lower()
+    primary_source = "external_okx_agent" if "okx" in source_lower or "onchain" in source_lower else "external_market_data"
+
+    risk_value = _first_value(data, "risk_control_level", "risk_level", "riskLevel")
+    top10_value = _first_value(data, "top10_hold_percent", "top10HolderPercent", "top_10_holders_percent")
+    dev_value = _first_value(data, "dev_holding_percent", "devHoldingPercent", "developer_holding_percent")
+    bundle_value = _first_value(data, "bundle_holding_percent", "bundleHoldingPercent")
+    suspicious_value = _first_value(data, "suspicious_holding_percent", "suspiciousHoldingPercent")
+    holders_value = _first_value(data, "holders", "holder_count", "holderCount")
+
+    return {
+        "source": source,
+        "symbol": _first_value(data, "symbol", "token_symbol", "tokenSymbol") or token.upper(),
+        "name": _first_value(data, "name", "token_name", "tokenName") or token.upper(),
+        "contract_address": _first_value(data, "contract_address", "address", "token_address", "contractAddress")
+        or (token if token.startswith("0x") else None),
+        "chain": _first_value(data, "chain", "chain_id", "chainId", "network"),
+        "price_usd": _first_value(data, "price_usd", "priceUsd", "price"),
+        "market_cap": _to_float(_first_value(data, "market_cap", "marketCap", "fdv")),
+        "liquidity": _to_float(_first_value(data, "liquidity", "liquidity_usd", "liquidityUsd")),
+        "volume24h": _to_float(_first_value(data, "volume24h", "volume_24h", "volume24H", "volume", "h24_volume")),
+        "holders": _to_float(holders_value) if holders_value is not None else None,
+        "risk_control_level": _to_float(risk_value, -1) if risk_value is not None else None,
+        "top10_hold_percent": _to_float(top10_value) if top10_value is not None else None,
+        "dev_holding_percent": _to_float(dev_value) if dev_value is not None else None,
+        "bundle_holding_percent": _to_float(bundle_value) if bundle_value is not None else None,
+        "suspicious_holding_percent": _to_float(suspicious_value) if suspicious_value is not None else None,
+        "is_internal": data.get("is_internal") if "is_internal" in data else data.get("isInternal"),
+        "token_tags": data.get("token_tags") or data.get("tokenTags") or [],
+        "raw_external_market_data": data,
+        "primary_data_source": primary_source,
+    }
+
+
 def _apply_okx_onchain_risk(score: int, reasons: list[str], okx_data: Dict[str, Any]) -> int:
     risk_level_value = okx_data.get("risk_control_level")
     top10_hold = okx_data.get("top10_hold_percent")
@@ -144,16 +198,20 @@ def _apply_okx_onchain_risk(score: int, reasons: list[str], okx_data: Dict[str, 
     return score
 
 
-def scan_crypto(token: str) -> RiskScan:
+def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = None) -> RiskScan:
     score = 20
     reasons = ["Crypto 基础风险分：链上资产波动和流动性风险默认存在"]
     raw_data: Dict[str, Any] = {"input": token}
-    okx_data: Optional[Dict[str, Any]] = None
+    okx_data: Optional[Dict[str, Any]] = _normalize_external_market_data(token, external_market_data)
 
-    try:
-        okx_data = fetch_okx_onchain_token(token)
-    except Exception as exc:
-        raw_data["okx_onchain_error"] = exc.__class__.__name__
+    if okx_data:
+        raw_data["external_market_data_used"] = True
+        raw_data["external_market_data_source"] = okx_data.get("source")
+    else:
+        try:
+            okx_data = fetch_okx_onchain_token(token)
+        except Exception as exc:
+            raw_data["okx_onchain_error"] = exc.__class__.__name__
 
     if okx_data:
         symbol = okx_data.get("symbol") or token.upper()
@@ -175,7 +233,7 @@ def scan_crypto(token: str) -> RiskScan:
                 "volume24h": volume24h,
                 "pair_url": None,
                 "fallback_mock": False,
-                "primary_data_source": "okx_onchainos",
+                "primary_data_source": okx_data.get("primary_data_source") or "okx_onchainos",
             }
         )
         raw_data["okx_onchain"] = okx_data
@@ -186,11 +244,18 @@ def scan_crypto(token: str) -> RiskScan:
         okx_volume = okx_data.get("volume24h")
         okx_holders = okx_data.get("holders")
         okx_liquidity_text = f"${okx_liquidity:,.0f}" if okx_liquidity is not None else "未知"
-        reasons.append(
-            "OKX Onchain OS 已作为第一数据源读取链上行情："
-            f"价格 ${okx_price if okx_price is not None else '未知'}，"
-            f"流动性约 {okx_liquidity_text}"
-        )
+        if raw_data.get("external_market_data_used"):
+            reasons.append(
+                "已使用调用方 Agent 传入的 OKX 链上行情作为第一数据源："
+                f"价格 ${okx_price if okx_price is not None else '未知'}，"
+                f"流动性约 {okx_liquidity_text}"
+            )
+        else:
+            reasons.append(
+                "OKX Onchain OS 已作为第一数据源读取链上行情："
+                f"价格 ${okx_price if okx_price is not None else '未知'}，"
+                f"流动性约 {okx_liquidity_text}"
+            )
         if okx_market_cap is not None or okx_volume is not None or okx_holders is not None:
             reasons.append(
                 f"OKX 链上概览：市值 {('$' + format(okx_market_cap, ',.0f')) if okx_market_cap is not None else '未知'}，"
@@ -252,8 +317,9 @@ def scan_crypto(token: str) -> RiskScan:
         score += 15
         reasons.append("24 小时成交量低于 10,000 美元，成交质量偏弱")
 
+    chain_for_security = raw_data.get("chain")
     try:
-        security = fetch_goplus_security(token_address or token, pair.get("chainId"))
+        security = fetch_goplus_security(token_address or token, chain_for_security)
     except Exception as exc:
         security = None
         raw_data["goplus_error"] = exc.__class__.__name__
