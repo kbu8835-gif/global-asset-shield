@@ -35,11 +35,31 @@ def build_munger_lens(
     risk_score = int(risk_scan.get("risk_score") or 0)
     conviction_score = int(conviction.get("score") or 0)
     emotion_score = int(emotion_scan.get("emotion_score") or 0)
+    direction = payload.trade_direction or "long"
+    favorable_plan = payload.favorable_plan or ""
+    sideways_plan = payload.sideways_plan or ""
+    worst_case_plan = payload.worst_case_plan or ""
+    has_three_plan = bool(favorable_plan and sideways_plan and worst_case_plan)
+    is_short = direction == "short"
 
-    failure_paths = [
-        "你买入后没有预先写下卖出条件，价格一跌就开始临场编理由。",
-        "你把上涨、KOL 和群体兴奋误认为安全边际。",
-    ]
+    if has_three_plan:
+        if is_short:
+            failure_paths = [
+                f"你明明写了“{worst_case_plan}”，但价格上涨时因为不甘心而不认错。",
+                f"你明明写了“{favorable_plan}”，但盈利后想多赚，最后把盈利吐回去。",
+                f"你写了“{sideways_plan}”，但横盘时因为无聊重新找理由开仓。",
+            ]
+        else:
+            failure_paths = [
+                f"你明明写了“{worst_case_plan}”，但下跌时开始临场解释。",
+                f"你明明写了“{favorable_plan}”，但上涨后把运气当能力继续加仓。",
+                f"你写了“{sideways_plan}”，但横盘时因为没耐心乱动。",
+            ]
+    else:
+        failure_paths = [
+            "你没有完整写下盈利、横盘和亏损三种情况，结果出现后只能临场编理由。",
+            "你把上涨、KOL 和群体兴奋误认为安全边际。",
+        ]
     if risk_score >= 60:
         failure_paths.append(f"{asset} 的资产风险分已经到 {risk_score}，你仍然用短线情绪做长期伤害。")
     if _position_is_large(payload.position_size):
@@ -67,6 +87,8 @@ def build_munger_lens(
         circle = "你还没赚到持有观点的资格。说不清风险、失效条件和仓位逻辑，就不在能力圈内。"
     elif raw.get("fallback_mock"):
         circle = "行情数据不完整，这笔决策至少应该进入 Too Hard，而不是立即下单。"
+    elif has_three_plan and conviction_score >= 75:
+        circle = "你已经写出基本交易边界，下一步不是再找观点，而是验证自己能不能按规则执行。"
     else:
         circle = "可以继续研究，但只有你能独立解释资产、风险和退出条件，才算进入能力圈。"
 
@@ -94,7 +116,10 @@ def build_munger_lens(
         "incentive_check": incentive_check,
         "lollapalooza_effect": lollapalooza,
         "too_hard_pile": risk_score >= 60 or raw.get("fallback_mock") or conviction_score <= 40,
-        "margin_of_safety": "安全边际不是一句我看好，而是价格、仓位、退出条件三件事同时保护你。",
+        "margin_of_safety": (
+            f"这次安全边际主要看三件事：仓位 {payload.position_size or '未写'}，"
+            f"有利情况计划“{favorable_plan or '未写'}”，不利情况计划“{worst_case_plan or '未写'}”。"
+        ),
         "munger_verdict": verdict,
         "one_sentence": one_sentence,
     }

@@ -49,38 +49,73 @@ def build_devil_advocate(
     emotion_scan: dict,
     bias_detection: dict,
     trade_direction: str = "long",
+    payload=None,
+    data_confidence: dict | None = None,
 ) -> dict:
     raw = risk_scan.get("raw_data") or {}
     market_context = _market_context(asset_type, raw)
+    buy_reason = getattr(payload, "buy_reason", None) or ""
+    position_size = getattr(payload, "position_size", None) or ""
+    risk_awareness = getattr(payload, "risk_awareness", None) or ""
+    favorable_plan = getattr(payload, "favorable_plan", None) or ""
+    sideways_plan = getattr(payload, "sideways_plan", None) or ""
+    worst_case_plan = getattr(payload, "worst_case_plan", None) or ""
+    user_intent = getattr(payload, "user_intent", None) or ""
+    confidence_score = int((data_confidence or {}).get("score") or 0)
+
+    plan_line = ""
+    if favorable_plan or sideways_plan or worst_case_plan:
+        if trade_direction == "short":
+            plan_line = f"你写的计划是：跌了“{favorable_plan or '未写'}”，横盘“{sideways_plan or '未写'}”，涨了“{worst_case_plan or '未写'}”。反方会检查你是否真的执行，而不是临场改口。"
+        else:
+            plan_line = f"你写的计划是：涨了“{favorable_plan or '未写'}”，横盘“{sideways_plan or '未写'}”，跌了“{worst_case_plan or '未写'}”。反方会检查这是不是规则，还是安慰自己的句子。"
+
+    size_line = ""
+    if position_size:
+        size_line = f"你准备投入 {position_size}。仓位越大，判断正确也可能因为波动被迫犯错。"
+
+    reason_line = ""
+    if buy_reason:
+        reason_line = f"你的理由是“{buy_reason}”。反方要问：这是可验证证据，还是一句情绪叙事？"
+
+    confidence_line = ""
+    if confidence_score and confidence_score < 50:
+        confidence_line = f"这次数据置信度只有 {confidence_score}，反方不会允许你把低置信数据当成高确定性结论。"
+
     if trade_direction == "short":
         against = [
             f"如果我是反方，我会反对你现在做空 {asset}，因为当前风险分是 {risk_scan['risk_score']}，波动本身就能先打爆没有规则的空头。",
             market_context[0],
             "做空的风险不是只会亏本金。逼空、跳空和资金费率会让你在方向看对前先被迫出局。",
-            "你需要证明自己有下跌逻辑、入场时机和止损规则，而不是只是在表达讨厌这个资产。",
-            "如果你说不出被逼空时怎么退出，这不是风控，这是反向情绪下注。",
+            reason_line or "你需要证明自己有下跌逻辑、入场时机和止损规则，而不是只是在表达讨厌这个资产。",
+            plan_line or "如果你说不出被逼空时怎么退出，这不是风控，这是反向情绪下注。",
         ]
     elif trade_direction == "watch":
         against = [
             f"如果我是反方，我会反对你现在开仓 {asset}，因为观望本身已经说明证据还不够硬。",
             market_context[0],
-            "你现在真正要做的不是找一个方向，而是确认哪些数据会让你改变判断。",
+            reason_line or "你现在真正要做的不是找一个方向，而是确认哪些数据会让你改变判断。",
             "没有触发条件的观察，最后很容易变成临场追单。",
-            "如果你说不出下一次复查时间，观望也会变成拖延式下注。",
+            plan_line or "如果你说不出下一次复查时间，观望也会变成拖延式下注。",
         ]
     else:
         against = [
             f"如果我是反方，我会反对你现在买 {asset}，因为当前风险分是 {risk_scan['risk_score']}，这不是低噪音环境。",
             market_context[0],
-            "你的最大风险不是这个资产会不会跌，而是你没有想过它跌了以后怎么办。",
-            "如果你说不出失效条件，这不是投资，这是情绪下注。",
+            reason_line or "你的最大风险不是这个资产会不会跌，而是你没有想过它跌了以后怎么办。",
+            plan_line or "如果你说不出失效条件，这不是投资，这是情绪下注。",
             "市场不会因为你害怕错过就给你更好的买点。冲动买入通常把风控放在最后。",
         ]
+    for optional in [size_line, confidence_line]:
+        if optional:
+            against.append(optional)
     against.extend(market_context[1:])
 
     bias_types = {item["bias_type"] for item in bias_detection.get("biases", [])}
     if "FOMO" in bias_types or "FOMO" in emotion_scan.get("detected_emotions", []):
         against.append("你现在可能不是在研究机会，而是在逃避错过的焦虑。")
+    if any(word in f"{user_intent} {buy_reason}" for word in ["KOL", "朋友", "群里", "博主", "老师"]):
+        against.append("这次输入有外部观点驱动。反方不会否定别人观点，但会否定你把别人观点当成自己的交易计划。")
     if asset_type == "crypto":
         against.append("Crypto 的流动性可以在你想卖时消失，盘口深度比叙事更诚实。")
     else:
@@ -88,14 +123,14 @@ def build_devil_advocate(
 
     if trade_direction == "short":
         supporting = [
-            "支持做空的理由可能是：你能写出明确的做空触发条件、止损点和最长持有时间。",
-            "支持做空的理由可能是：仓位很小，且你已经接受被逼空时立刻退出。",
+            f"支持做空的理由可能是：{buy_reason or '你有清楚的下跌逻辑'}，并且能被事实证伪。",
+            f"支持做空的理由可能是：仓位是 {position_size or '小仓位'}，即使被逼空也不会伤到本金结构。",
         ]
         killer = [
-            "如果明天先涨 30%，你会在哪里止损？",
+            f"如果先涨到你的认错线，你会按“{worst_case_plan or '预设止损'}”执行，还是重新找理由？",
             "你的做空逻辑是基本面恶化、估值过热，还是单纯觉得它涨多了？",
             "谁可能在继续买入推高价格，为什么你确定他会停？",
-            "如果方向最后看对，但你先被逼空，这笔交易还算好交易吗？",
+            f"如果横盘到“{sideways_plan or '你设定的期限'}”，你会退出还是继续耗着？",
         ]
     elif trade_direction == "watch":
         supporting = [
@@ -109,15 +144,15 @@ def build_devil_advocate(
         ]
     else:
         supporting = [
-            "支持买入的理由可能是：你有独立研究，并且能写出明确的失效条件。",
-            "支持买入的理由可能是：仓位很小，小到即使错了也不会影响你的长期本金。",
+            f"支持买入的理由可能是：{buy_reason or '你有独立研究'}，并且能写出明确失效条件。",
+            f"支持买入的理由可能是：仓位是 {position_size or '小仓位'}，错了也不会影响长期本金。",
         ]
 
         killer = [
-            "如果明天跌 30%，你会怎么做？",
+            f"如果先跌到你的退出线，你会按“{worst_case_plan or '预设止损'}”执行，还是临场改规则？",
             "谁可能正在把筹码卖给你，为什么他愿意卖？",
             "什么事实出现后，你会承认自己错了？",
-            "这笔仓位亏光，会不会影响你下一次理性决策？",
+            f"如果横盘到“{sideways_plan or '你设定的期限'}”，你会继续等还是为了有动作而加仓？",
         ]
 
     return {

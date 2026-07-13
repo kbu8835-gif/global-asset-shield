@@ -208,6 +208,46 @@ def test_immune_report_supports_short_direction(monkeypatch):
     assert any(item["bias_type"] == "Short Bias" for item in data["bias_detection"]["biases"])
 
 
+def test_immune_report_personalizes_advanced_sections(monkeypatch):
+    monkeypatch.setattr(
+        "immune.risk.scan_crypto",
+        lambda asset: {
+            "risk_score": 55,
+            "risk_level": "中风险",
+            "risk_reasons": ["mock crypto"],
+            "raw_data": {"asset": asset, "price_usd": "0.01", "liquidity": 100000, "volume24h": 10},
+        },
+    )
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "PEPE",
+            "asset_type": "crypto",
+            "trade_direction": "short",
+            "user_intent": "自己研究",
+            "user_text": "我想做空 PEPE，但会按计划执行",
+            "buy_reason": "涨太快，成交量没有跟上",
+            "risk_awareness": "可能被逼空",
+            "favorable_plan": "下跌20%止盈",
+            "sideways_plan": "横盘 3 天重新评估",
+            "worst_case_plan": "上涨 10% 就止损",
+            "position_size": "ALL IN",
+            "horizon": "短线",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    devil_text = " ".join(data["devil_advocate"]["against_buying"])
+    regret_text = " ".join(data["regret_simulation"].values())
+    munger_paths = " ".join(data["munger_lens"]["inversion"]["failure_paths"])
+
+    assert "ALL IN" in devil_text
+    assert "下跌20%止盈" in devil_text
+    assert "上涨 10% 就止损" in regret_text
+    assert "横盘 3 天重新评估" in munger_paths
+
+
 def test_immune_report_watch_direction_returns_observation_plan(monkeypatch):
     monkeypatch.setattr(
         "immune.risk.scan_crypto",

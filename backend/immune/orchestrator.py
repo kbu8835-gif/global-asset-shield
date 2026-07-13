@@ -43,8 +43,17 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
     kol_risk_scan = build_kol_risk_summary(_combined_text(payload), user_id)
     kol_dependency = calculate_user_kol_dependency(user_id).kol_dependency if kol_risk_scan else 0
     historical_dna_scan = build_historical_dna_scan(payload, user_id)
-    devil = build_devil_advocate(asset, payload.asset_type, risk_scan, emotion_scan, bias_detection, trade_direction)
-    regret = simulate_regret(asset, emotion_scan["emotion_score"], bias_detection, payload.position_size, trade_direction)
+    devil = build_devil_advocate(
+        asset,
+        payload.asset_type,
+        risk_scan,
+        emotion_scan,
+        bias_detection,
+        trade_direction,
+        payload=payload,
+        data_confidence=data_confidence,
+    )
+    regret = simulate_regret(asset, emotion_scan["emotion_score"], bias_detection, payload.position_size, trade_direction, payload=payload)
     conviction = build_conviction_score(payload)
     munger_lens = build_munger_lens(payload, risk_scan, emotion_scan, bias_detection, conviction, kol_risk_scan)
     observation_plan = build_observation_plan(payload, asset) if trade_direction == "watch" else None
