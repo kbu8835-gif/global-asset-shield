@@ -50,6 +50,7 @@ def test_immune_report_fomo_saves_journal(monkeypatch):
     assert data["emotion_scan"]["emotion_score"] > 0
     assert data["final_decision"]
     assert data["journal_saved"] is True
+    assert any("50%" in question for question in data["conviction_score"]["improvement_questions"])
     assert data["ai_coach"]["fallback_used"] is True
     assert data["ai_coach"]["coach_message"]
     assert data["data_confidence"]["score"] < 50

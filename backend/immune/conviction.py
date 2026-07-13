@@ -19,6 +19,17 @@ def _position_percent(position_size: str | None) -> float | None:
     return None
 
 
+def _position_question(position_size: str | None, position: float | None) -> str:
+    raw = (position_size or "").strip()
+    if position is not None and position >= 100:
+        return "为什么这笔交易值得一次押上全部资金？如果判断错了，你还有没有下一次机会？"
+    if position is not None and position >= 50:
+        return f"你写的是 {raw or f'{position:.0f}%'}，这接近半仓甚至更高。为什么这笔交易值得承担这种本金波动？"
+    if position is not None:
+        return f"你写的是 {raw or f'{position:.0f}%'}。为什么这笔交易值得一次投入这么多，而不是先用 5%-10% 验证？"
+    return f"你写的仓位是“{raw or '未填写'}”。为什么这笔交易值得超过小仓位试错？"
+
+
 def build_conviction_score(payload: ImmuneReportRequest) -> dict:
     score = 0
     problems = []
@@ -58,7 +69,7 @@ def build_conviction_score(payload: ImmuneReportRequest) -> dict:
         score += 25
     else:
         problems.append("仓位过大")
-        questions.append("为什么这笔交易值得一次押上超过 10% 的资金？")
+        questions.append(_position_question(payload.position_size, position))
 
     if any(word in all_text for word in ["KOL推荐", "朋友推荐", "朋友说", "大V说"]):
         score -= 25
