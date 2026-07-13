@@ -61,7 +61,7 @@ function scoreBlock(label: string, value?: number) {
 
 function formatSaveState(saving: boolean, savedAt: string) {
   if (saving) return "正在保存...";
-  if (!savedAt) return "已开启自动保存";
+  if (!savedAt) return "编辑完成后点击保存";
   return `已保存 ${savedAt}`;
 }
 
@@ -179,25 +179,6 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
     };
     focus().catch((err) => onError(err instanceof Error ? err.message : "Failed to open notebook"));
   }, [focusNotebookId]);
-
-  useEffect(() => {
-    if (!draft || !selected || draft.id !== selected.id) return;
-    const timer = window.setTimeout(() => {
-      saveDraft(false).catch((err) => onError(err instanceof Error ? err.message : "Auto save failed"));
-    }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [
-    draft?.title,
-    draft?.notes,
-    draft?.buy_reason,
-    draft?.risk_awareness,
-    draft?.favorable_plan,
-    draft?.sideways_plan,
-    draft?.worst_case_plan,
-    draft?.decision,
-    draft?.status,
-    draft?.trade_direction,
-  ]);
 
   const assets = useMemo(() => ["All", ...Array.from(new Set(items.map((item) => item.asset)))], [items]);
   const filtered = useMemo(() => {
