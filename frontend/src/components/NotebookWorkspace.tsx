@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createNotebook,
   deleteNotebook,
@@ -150,6 +150,10 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
+  const notesRef = useRef<HTMLTextAreaElement | null>(null);
+  const buyReasonRef = useRef<HTMLTextAreaElement | null>(null);
+  const riskAwarenessRef = useRef<HTMLTextAreaElement | null>(null);
+  const worstCaseRef = useRef<HTMLTextAreaElement | null>(null);
 
   const loadList = async () => {
     const nextItems = await getNotebooks();
@@ -206,12 +210,12 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
       asset: draft.asset,
       asset_type: draft.asset_type,
       title: draft.title,
-      notes: draft.notes || "",
-      buy_reason: draft.buy_reason || "",
-      risk_awareness: draft.risk_awareness || "",
+      notes: notesRef.current?.value ?? draft.notes ?? "",
+      buy_reason: buyReasonRef.current?.value ?? draft.buy_reason ?? "",
+      risk_awareness: riskAwarenessRef.current?.value ?? draft.risk_awareness ?? "",
       favorable_plan: draft.favorable_plan || "",
       sideways_plan: draft.sideways_plan || "",
-      worst_case_plan: draft.worst_case_plan || "",
+      worst_case_plan: worstCaseRef.current?.value ?? draft.worst_case_plan ?? "",
       decision: draft.decision,
       status: draft.status,
       trade_direction: draft.trade_direction || "long",
@@ -540,24 +544,43 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
               <div className="space-y-5">
                 <label className="block">
                   <div className="mb-2 text-sm font-semibold text-white">1. 今天为什么想到它？</div>
-                  <textarea className={areaClass} value={draft.notes || ""} onChange={(event) => patchDraft({ notes: event.target.value })} placeholder="例如：看到 KOL 提到、朋友推荐、自己研究、价格突然上涨..." />
+                  <textarea
+                    key={`notes-${draft.id}`}
+                    ref={notesRef}
+                    className={areaClass}
+                    defaultValue={draft.notes || ""}
+                    placeholder="例如：看到 KOL 提到、朋友推荐、自己研究、价格突然上涨..."
+                  />
                 </label>
                 <label className="block">
                   <div className="mb-2 text-sm font-semibold text-white">2. 我的交易逻辑</div>
-                  <textarea className={areaClass} value={draft.buy_reason || ""} onChange={(event) => patchDraft({ buy_reason: event.target.value })} placeholder="如果做多，为什么会上涨？如果做空，为什么会下跌？" />
+                  <textarea
+                    key={`buy-reason-${draft.id}`}
+                    ref={buyReasonRef}
+                    className={areaClass}
+                    defaultValue={draft.buy_reason || ""}
+                    placeholder="如果做多，为什么会上涨？如果做空，为什么会下跌？"
+                  />
                 </label>
                 <label className="block">
                   <div className="mb-2 text-sm font-semibold text-white">3. 什么情况说明我错了？</div>
-                  <textarea className={areaClass} value={draft.risk_awareness || ""} onChange={(event) => patchDraft({ risk_awareness: event.target.value })} placeholder="写不出这一条，就不要急着下单。" />
+                  <textarea
+                    key={`risk-awareness-${draft.id}`}
+                    ref={riskAwarenessRef}
+                    className={areaClass}
+                    defaultValue={draft.risk_awareness || ""}
+                    placeholder="写不出这一条，就不要急着下单。"
+                  />
                 </label>
                 <label className="block">
                   <div className="mb-2 text-sm font-semibold text-white">
                     4. {draft.trade_direction === "short" ? "如果上涨亏损，我怎么认错？" : "如果下跌亏损，我怎么退出？"}
                   </div>
                   <textarea
+                    key={`worst-case-${draft.id}`}
+                    ref={worstCaseRef}
                     className={areaClass}
-                    value={draft.worst_case_plan || ""}
-                    onChange={(event) => patchDraft({ worst_case_plan: event.target.value })}
+                    defaultValue={draft.worst_case_plan || ""}
                     placeholder={
                       draft.trade_direction === "short"
                         ? "例如：上涨 8% 止损，突破关键位平空，不补空扛单。"
