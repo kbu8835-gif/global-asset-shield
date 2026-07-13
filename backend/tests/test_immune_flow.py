@@ -344,3 +344,60 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
     assert "OKX 合约安全数据" in " ".join(data["risk_scan"]["risk_reasons"])
     assert "OKX Onchain OS Agent" in data["okx_ai_agent_result"]["market_snapshot"]
     assert "OKX 链上行情" in data["okx_ai_agent_result"]["display_markdown"]
+
+
+def test_okx_ai_result_surfaces_external_okx_security_scan(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
+
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "RISKY",
+            "asset_type": "crypto",
+            "trade_direction": "long",
+            "user_intent": "KOL推荐",
+            "user_text": "看到KOL推荐，怕错过",
+            "buy_reason": "KOL推荐",
+            "risk_awareness": "不清楚",
+            "worst_case_plan": "跌10%止损",
+            "position_size": "50%",
+            "horizon": "短线",
+            "external_market_data": {
+                "source": "OKX Onchain OS Agent",
+                "symbol": "RISKY",
+                "price": 0.01,
+                "market_cap": 20_000_000,
+                "liquidity": 40_000,
+                "volume24h": 5_000,
+                "holders": 100,
+                "risk_control_level": 4,
+                "top10_hold_percent": 55,
+                "is_honeypot": True,
+                "is_blacklisted": True,
+                "is_mintable": True,
+                "is_proxy": True,
+                "owner_privilege": "high",
+                "buy_tax": 12,
+                "sell_tax": 15,
+                "liquidity_change_24h": -35,
+                "pool_depth_warning": True,
+            },
+        },
+    )
+
+    data = response.json()
+    security_scan = data["okx_ai_agent_result"]["okx_security_scan"]
+    display = data["okx_ai_agent_result"]["display_markdown"]
+
+    assert response.status_code == 200
+    assert security_scan["honeypot"] is True
+    assert security_scan["blacklist"] is True
+    assert security_scan["owner_privilege"] == "high"
+    assert security_scan["buy_tax_percent"] == 12
+    assert security_scan["sell_tax_percent"] == 15
+    assert "OKX 安全扫描" in display
+    assert "疑似蜜罐：是" in display
+    assert "黑名单风险：是" in display
+    assert "买税/卖税：12% / 15%" in display

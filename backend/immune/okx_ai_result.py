@@ -90,6 +90,99 @@ def _format_bullets(items: List[str], fallback: str) -> str:
     return "\n".join(f"- {item}" for item in values)
 
 
+def _yes_no(value: Any) -> str:
+    return "是" if bool(value) else "否"
+
+
+def _format_percent(value: Any) -> str:
+    if value in (None, ""):
+        return "未知"
+    try:
+        return f"{float(value):g}%"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _build_okx_security_scan(report: Dict[str, Any]) -> Dict[str, Any] | None:
+    raw = report.get("risk_scan", {}).get("raw_data") or {}
+    okx_data = raw.get("okx_onchain") or {}
+    security = raw.get("security_summary") or raw.get("okx_security_summary") or {}
+    source = raw.get("security_source") or security.get("source") or raw.get("external_market_data_source")
+    if not security and not raw.get("liquidity_change_24h") and not raw.get("pool_depth_warning"):
+        return None
+
+    liquidity_change = raw.get("liquidity_change_24h")
+    pool_depth = raw.get("pool_depth_usd")
+    pool_depth_warning = bool(raw.get("pool_depth_warning"))
+    top10_hold = okx_data.get("top10_hold_percent")
+    risk_level = okx_data.get("risk_control_level")
+
+    warning_items: List[str] = []
+    if security.get("is_honeypot"):
+        warning_items.append("疑似蜜罐，可能买入后难以卖出")
+    if security.get("is_blacklisted"):
+        warning_items.append("存在黑名单风险，部分地址可能被限制交易")
+    if security.get("is_mintable"):
+        warning_items.append("合约可能存在增发权限，持有人可能被稀释")
+    if security.get("is_proxy"):
+        warning_items.append("代理合约风险，合约逻辑可能被升级改变")
+    if security.get("can_take_back_ownership") or security.get("owner_change_balance"):
+        warning_items.append("owner 权限较强，可能影响合约控制权或持有人余额")
+    buy_tax = security.get("buy_tax_percent")
+    sell_tax = security.get("sell_tax_percent")
+    if (buy_tax or 0) > 10 or (sell_tax or 0) > 10:
+        warning_items.append(f"买卖税偏高：买税 {_format_percent(buy_tax)}，卖税 {_format_percent(sell_tax)}")
+    if top10_hold is not None and top10_hold > 40:
+        warning_items.append(f"Top 10 持仓占比约 {_format_percent(top10_hold)}，筹码集中度偏高")
+    if liquidity_change is not None and liquidity_change < -25:
+        warning_items.append(f"24h 流动性下降约 {_format_percent(abs(liquidity_change))}，需要警惕撤池或深度变薄")
+    if pool_depth_warning or (pool_depth is not None and pool_depth < 50_000):
+        warning_items.append("池子深度不足，较小资金也可能造成明显滑点")
+    if risk_level is not None and risk_level >= 4:
+        warning_items.append("OKX 风险等级为高风险，不能只看价格涨跌")
+
+    if not warning_items:
+        warning_items.append("未发现明显合约安全红灯，但仍需要结合仓位和退出计划。")
+
+    return {
+        "source": source or "OKX Onchain OS Agent",
+        "honeypot": bool(security.get("is_honeypot")),
+        "blacklist": bool(security.get("is_blacklisted")),
+        "mintable": bool(security.get("is_mintable")),
+        "proxy_contract": bool(security.get("is_proxy")),
+        "owner_privilege": security.get("owner_privilege") or (
+            "high" if security.get("can_take_back_ownership") or security.get("owner_change_balance") else "low"
+        ),
+        "buy_tax_percent": buy_tax,
+        "sell_tax_percent": sell_tax,
+        "liquidity_change_24h": liquidity_change,
+        "pool_depth_usd": pool_depth,
+        "pool_depth_warning": pool_depth_warning,
+        "top10_hold_percent": top10_hold,
+        "risk_control_level": risk_level,
+        "warnings": warning_items,
+        "summary": "；".join(warning_items[:4]),
+    }
+
+
+def _format_okx_security_markdown(security_scan: Dict[str, Any] | None) -> List[str]:
+    if not security_scan:
+        return []
+    warnings = _items(security_scan.get("warnings"))[:6]
+    return [
+        "## OKX 安全扫描",
+        f"- 数据源：{security_scan.get('source')}",
+        f"- 疑似蜜罐：{_yes_no(security_scan.get('honeypot'))}",
+        f"- 黑名单风险：{_yes_no(security_scan.get('blacklist'))}",
+        f"- Owner 权限：{security_scan.get('owner_privilege') or '未知'}",
+        f"- 买税/卖税：{_format_percent(security_scan.get('buy_tax_percent'))} / {_format_percent(security_scan.get('sell_tax_percent'))}",
+        f"- 24h 流动性变化：{_format_percent(security_scan.get('liquidity_change_24h'))}",
+        f"- 池子深度风险：{_yes_no(security_scan.get('pool_depth_warning'))}",
+        "- 关键提醒：" + ("；".join(warnings) if warnings else "未发现明显合约安全红灯。"),
+        "",
+    ]
+
+
 def _build_display_markdown(
     payload: ImmuneReportRequest,
     result: Dict[str, Any],
@@ -105,6 +198,7 @@ def _build_display_markdown(
     must_answer = _items(result.get("must_answer_before_trade"))[:3]
     emotions = _items(behavior.get("detected_emotions"))[:4]
     biases = _items(behavior.get("top_biases"))[:3]
+    security_section = _format_okx_security_markdown(result.get("okx_security_scan"))
 
     return "\n".join(
         [
@@ -117,6 +211,7 @@ def _build_display_markdown(
             f"- 数据置信度：{confidence.get('score')} / {confidence.get('level')}",
             f"- 数据提示：{confidence.get('summary')}",
             "",
+            *security_section,
             "## 为什么现在不该冲动",
             _format_list(top_risks, "当前证据还不足以支持重仓开仓。"),
             "",
@@ -152,6 +247,7 @@ def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, An
     coach = report.get("ai_coach") or {}
     history = report.get("historical_dna_scan") or {}
     kol_scan = report.get("kol_risk_scan") or {}
+    okx_security_scan = _build_okx_security_scan(report)
 
     must_answer = report.get("devil_advocate", {}).get("killer_questions") or []
     if not must_answer:
@@ -183,6 +279,7 @@ def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, An
             "level": confidence.get("level"),
             "summary": confidence.get("summary"),
         },
+        "okx_security_scan": okx_security_scan,
         "top_risks": risk_reasons,
         "behavior_scan": {
             "emotion_score": report.get("emotion_scan", {}).get("emotion_score"),
