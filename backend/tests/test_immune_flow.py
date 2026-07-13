@@ -346,6 +346,54 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
     assert "OKX 链上行情" in data["okx_ai_agent_result"]["display_markdown"]
 
 
+def test_immune_report_accepts_external_okx_stock_market_data(monkeypatch):
+    monkeypatch.setattr("scanner.stock.fetch_us_stock", lambda _symbol: (_ for _ in ()).throw(RuntimeError("should not call yfinance")))
+    monkeypatch.setattr(
+        "scanner.stock.fetch_yahoo_chart_stock",
+        lambda _symbol: (_ for _ in ()).throw(RuntimeError("should not call yahoo")),
+    )
+
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "NVDA",
+            "asset_type": "stock",
+            "trade_direction": "long",
+            "user_intent": "自己研究",
+            "user_text": "我想做多 NVDA，但担心已经涨太多",
+            "buy_reason": "AI 芯片增长强",
+            "risk_awareness": "估值和业绩预期风险",
+            "worst_case_plan": "跌破计划就止损",
+            "position_size": "10%",
+            "horizon": "中线",
+            "external_market_data": {
+                "source": "OKX Market Agent",
+                "symbol": "NVDA",
+                "price": 172.5,
+                "market_cap": 4_200_000_000_000,
+                "day_change_percent": 9.2,
+                "volume": 80_000_000,
+                "average_volume": 40_000_000,
+                "pe": 88,
+                "revenue_growth": 0.65,
+                "profit_margin": 0.52,
+                "debt_to_equity": 35,
+                "free_cash_flow": 40_000_000_000,
+                "recommendation_key": "buy",
+            },
+        },
+    )
+
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["risk_scan"]["raw_data"]["data_source"] == "okx_market_agent"
+    assert data["risk_scan"]["raw_data"]["external_market_data_used"] is True
+    assert "OKX Market Agent 美股行情" in " ".join(data["risk_scan"]["risk_reasons"])
+    assert "OKX Market Agent" in data["okx_ai_agent_result"]["market_snapshot"]
+    assert "数据源：OKX Market Agent" in data["okx_ai_agent_result"]["display_markdown"]
+
+
 def test_okx_ai_result_surfaces_external_okx_security_scan(monkeypatch):
     monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)
     monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))

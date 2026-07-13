@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import requests
 import yfinance as yf
@@ -15,6 +15,58 @@ def _safe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _first_value(data: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _normalize_percent(value: Any) -> float | None:
+    number = _safe_float(value)
+    if number is None:
+        return None
+    return number * 100 if abs(number) <= 1 else number
+
+
+def _normalize_external_stock_data(symbol: str, external_market_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not external_market_data:
+        return None
+    data = dict(external_market_data)
+    source = str(data.get("source") or data.get("data_source") or data.get("provider") or "external_market_data")
+    source_lower = source.lower()
+    data_source = "okx_market_agent" if "okx" in source_lower else "external_market_data"
+
+    normalized = {
+        "symbol": str(_first_value(data, "symbol", "ticker", "asset") or symbol).upper(),
+        "price": _safe_float(_first_value(data, "price", "last_price", "lastPrice", "regularMarketPrice", "current_price")),
+        "market_cap": _safe_float(_first_value(data, "market_cap", "marketCap", "mktCap")),
+        "day_change_percent": _normalize_percent(
+            _first_value(data, "day_change_percent", "change_percent", "changePercent", "regularMarketChangePercent")
+        ),
+        "volume": _safe_float(_first_value(data, "volume", "regularMarketVolume", "day_volume")),
+        "average_volume": _safe_float(_first_value(data, "average_volume", "avgVolume", "averageVolume")),
+        "pe": _safe_float(_first_value(data, "pe", "trailingPE", "forwardPE", "pe_ratio", "peRatio")),
+        "revenue_growth": _normalize_percent(_first_value(data, "revenue_growth", "revenueGrowth")),
+        "profit_margin": _normalize_percent(_first_value(data, "profit_margin", "profitMargins", "net_margin")),
+        "debt_to_equity": _safe_float(_first_value(data, "debt_to_equity", "debtToEquity")),
+        "free_cash_flow": _safe_float(_first_value(data, "free_cash_flow", "freeCashflow", "free_cashflow")),
+        "recommendation_key": _first_value(data, "recommendation_key", "recommendationKey", "analyst_rating", "analystRating"),
+        "number_of_analyst_opinions": _first_value(data, "number_of_analyst_opinions", "numberOfAnalystOpinions"),
+        "news_risk_keywords": data.get("news_risk_keywords") or data.get("newsRiskKeywords") or [],
+        "currency": _first_value(data, "currency", "quote_currency") or "USD",
+        "short_name": _first_value(data, "short_name", "shortName", "name", "company_name") or f"{symbol.upper()} US Equity",
+        "exchange": _first_value(data, "exchange", "exchangeName", "fullExchangeName"),
+        "data_source": data_source,
+        "external_market_data_source": source,
+        "external_market_data_used": True,
+        "fallback_mock": False,
+        "raw_external_market_data": data,
+    }
+    return normalized if normalized["price"] is not None else None
 
 
 def fetch_us_stock(symbol: str) -> Dict[str, Any]:
@@ -148,24 +200,29 @@ def _news_risk_keywords(news_items: list) -> list[str]:
     return found
 
 
-def scan_stock(symbol: str) -> RiskScan:
+def scan_stock(symbol: str, external_market_data: Optional[Dict[str, Any]] = None) -> RiskScan:
     score = 20
     symbol = symbol.strip().upper()
     reasons = ["股票基础风险分：权益资产天然受估值、流动性和市场情绪影响"]
 
-    try:
-        raw_data = fetch_us_stock(symbol)
-        if raw_data.get("price") is None:
-            raise RuntimeError("yfinance returned no price")
-    except Exception as exc:
+    raw_data = _normalize_external_stock_data(symbol, external_market_data)
+    if raw_data:
+        source = raw_data.get("external_market_data_source") or raw_data.get("data_source")
+        reasons.append(f"已使用调用方 Agent 传入的 {source} 美股行情作为第一数据源")
+    else:
         try:
-            raw_data = fetch_yahoo_chart_stock(symbol)
-            reasons.append(f"yfinance 暂时不可用，已切换到 Yahoo Chart 免费备用源：{exc.__class__.__name__}")
-        except Exception as fallback_exc:
-            raw_data = _mock_stock(symbol)
-            reasons.append(
-                f"yfinance 和 Yahoo Chart 暂时不可用，已使用 mock fallback：{exc.__class__.__name__}/{fallback_exc.__class__.__name__}"
-            )
+            raw_data = fetch_us_stock(symbol)
+            if raw_data.get("price") is None:
+                raise RuntimeError("yfinance returned no price")
+        except Exception as exc:
+            try:
+                raw_data = fetch_yahoo_chart_stock(symbol)
+                reasons.append(f"yfinance 暂时不可用，已切换到 Yahoo Chart 免费备用源：{exc.__class__.__name__}")
+            except Exception as fallback_exc:
+                raw_data = _mock_stock(symbol)
+                reasons.append(
+                    f"yfinance 和 Yahoo Chart 暂时不可用，已使用 mock fallback：{exc.__class__.__name__}/{fallback_exc.__class__.__name__}"
+                )
 
     pe = raw_data.get("pe")
     day_change = raw_data.get("day_change_percent")

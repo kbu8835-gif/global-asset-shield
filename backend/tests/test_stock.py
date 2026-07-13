@@ -78,3 +78,38 @@ def test_stock_scanner_fundamental_risk(monkeypatch):
     assert result.risk_score >= 80
     assert any("营收增长为负" in reason for reason in result.risk_reasons)
     assert any("新闻" in reason for reason in result.risk_reasons)
+
+
+def test_stock_scanner_accepts_external_okx_market_data(monkeypatch):
+    monkeypatch.setattr("scanner.stock.fetch_us_stock", lambda _symbol: (_ for _ in ()).throw(RuntimeError("should not call yfinance")))
+    monkeypatch.setattr(
+        "scanner.stock.fetch_yahoo_chart_stock",
+        lambda _symbol: (_ for _ in ()).throw(RuntimeError("should not call yahoo")),
+    )
+
+    result = scan_stock(
+        "NVDA",
+        external_market_data={
+            "source": "OKX Market Agent",
+            "symbol": "NVDA",
+            "price": 172.5,
+            "market_cap": 4_200_000_000_000,
+            "day_change_percent": 9.2,
+            "volume": 80_000_000,
+            "average_volume": 40_000_000,
+            "pe": 88,
+            "revenue_growth": 0.65,
+            "profit_margin": 0.52,
+            "debt_to_equity": 35,
+            "free_cash_flow": 40_000_000_000,
+            "recommendation_key": "buy",
+        },
+    )
+
+    assert result.raw_data["data_source"] == "okx_market_agent"
+    assert result.raw_data["external_market_data_used"] is True
+    assert result.raw_data["external_market_data_source"] == "OKX Market Agent"
+    assert result.raw_data["price"] == 172.5
+    assert result.raw_data["revenue_growth"] == 65
+    assert any("OKX Market Agent 美股行情" in reason for reason in result.risk_reasons)
+    assert any("PE 高于 80" in reason for reason in result.risk_reasons)
