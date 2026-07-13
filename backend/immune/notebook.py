@@ -281,11 +281,17 @@ def _direction_review_prefix(direction: str) -> str:
 
 
 def _review_outcome_tone(text: str) -> str:
+    if _contains(text, ["卖飞", "卖早", "平早", "提前止盈", "提前平"]):
+        return "这次最该复盘的不是方向判断，而是盈利处理是否过早。"
+    if _contains(text, ["止损", "按计划", "认错"]):
+        return "这次复盘重点是执行质量：你是否按计划行动，而不是事后重新解释。"
     if _contains(text, ["亏", "跌", "-"]):
         return "结果给了你一次压力测试。"
     if _contains(text, ["赚", "涨", "盈利", "+"]):
         return "结果看起来有利，但盈利不能自动证明过程正确。"
-    return "结果还不够量化，复盘最好写清楚涨跌幅、持仓动作和当时情绪。"
+    if len(text.strip()) < 8:
+        return "结果描述比较短，但已经能看出一个行为线索。以后最好补上动作和原因。"
+    return "复盘要抓住真实动作：你当时做了什么，是否符合原计划。"
 
 
 def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: int) -> Optional[NotebookDetail]:
@@ -344,7 +350,7 @@ def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: i
     lesson = " ".join(lesson_parts)
 
     if direction == "short":
-        next_action = "下次做空前，先写：上涨多少止损、是否允许加空、最大亏损金额。写不出来，就不要开空。"
+        next_action = "下次做空前，先写完整三条：跌了怎么止盈，横盘多久平仓，涨到哪里认错。写不出来，就不要开空。"
     elif direction == "watch":
         next_action = "下次观察前，先写：什么数据出现才行动，什么风险确认就继续等待。"
     else:
@@ -362,7 +368,7 @@ def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: i
         next_action = "下次开仓前先写退出条件；如果只有“再看看”，这笔交易自动不合格。"
 
     review_outcome_label = f"{outcome['market']}后{outcome['behavior']}" if outcome else mistake
-    if mistake in {"没有止损", "FOMO 追高", "外部观点替代计划", "仓位过重", "做空风险低估", "观察条件不清"}:
+    if mistake in {"没有止损", "FOMO 追高", "外部观点替代计划", "仓位过重", "观察条件不清"}:
         review_outcome_label = mistake
 
     return update_notebook(

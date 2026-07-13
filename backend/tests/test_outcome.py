@@ -24,6 +24,10 @@ def test_short_outcome_understands_paraphrases():
     assert early_profit is not None
     assert early_profit["mistake"] == "做空提前止盈"
 
+    sold_too_early = analyze_review_outcome("提前卖飞", "short")
+    assert sold_too_early is not None
+    assert sold_too_early["mistake"] == "做空提前止盈"
+
     add_short = analyze_review_outcome("上涨后我又加了空，结果越亏越多", "short")
     assert add_short is not None
     assert add_short["mistake"] == "逆势补空"

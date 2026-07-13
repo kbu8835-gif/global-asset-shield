@@ -104,3 +104,40 @@ def test_notebook_review_personalizes_short_squeeze_risk():
     assert "禁止补空" in reviewed["next_action"]
 
     client.delete(f"/notebook/{notebook_id}")
+
+
+def test_notebook_review_understands_short_sold_too_early():
+    create_response = client.post(
+        "/notebook",
+        json={
+            "asset": "PEPE",
+            "asset_type": "crypto",
+            "trade_direction": "short",
+            "title": "PEPE short",
+            "decision": "Short",
+            "notes": "Testing a short plan.",
+            "buy_reason": "I think the pump is fading.",
+            "favorable_plan": "下跌20%止盈",
+            "sideways_plan": "横盘 3 天重新评估",
+            "worst_case_plan": "上涨 10% 就止损",
+            "risk_awareness": "Short squeeze risk.",
+            "position_size": "ALL IN",
+        },
+    )
+    assert create_response.status_code == 200
+    notebook_id = create_response.json()["id"]
+
+    review_response = client.post(
+        f"/notebook/{notebook_id}/review",
+        json={"current_price": 0, "user_result_text": "提前卖飞"},
+    )
+
+    assert review_response.status_code == 200
+    reviewed = review_response.json()
+    assert reviewed["mistakes"] == "做空提前止盈"
+    assert reviewed["review_outcome_label"] == "下跌后提前止盈"
+    assert "盈利处理是否过早" in reviewed["lesson"]
+    assert "下跌到计划位先止盈" in reviewed["next_action"]
+    assert "不要临场新增规则" in reviewed["next_action"]
+
+    client.delete(f"/notebook/{notebook_id}")
