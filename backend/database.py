@@ -160,6 +160,8 @@ def init_db() -> None:
         _ensure_column(conn, "journal_entries", "mistakes", "TEXT")
         _ensure_column(conn, "journal_entries", "lesson", "TEXT")
         _ensure_column(conn, "journal_entries", "next_action", "TEXT")
+        _ensure_column(conn, "journal_entries", "review_result_text", "TEXT")
+        _ensure_column(conn, "journal_entries", "review_outcome_label", "TEXT")
         _ensure_column(conn, "journal_entries", "review_date", "TEXT")
         _ensure_column(conn, "journal_entries", "updated_at", "TEXT")
         conn.execute("UPDATE journal_entries SET title = COALESCE(title, asset) WHERE title IS NULL")

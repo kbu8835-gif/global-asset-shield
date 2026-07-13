@@ -57,6 +57,57 @@ def test_immune_report_fomo_saves_journal(monkeypatch):
     assert data["ai_coach"]["data_confidence_note"]
     assert data["munger_lens"]["framework"] == "Munger Lens"
     assert data["munger_lens"]["munger_verdict"] in {"No", "Too Hard", "Small Bet"}
+    assert data["historical_dna_scan"]["available"] is True
+
+
+def test_immune_report_uses_historical_dna_patterns(monkeypatch):
+    monkeypatch.setattr(
+        "immune.risk.scan_crypto",
+        lambda asset: {
+            "risk_score": 45,
+            "risk_level": "中风险",
+            "risk_reasons": ["mock"],
+            "raw_data": {"asset": asset},
+        },
+    )
+    client.post(
+        "/immune/report",
+        json={
+            "asset": "HISTORYFOMO",
+            "asset_type": "crypto",
+            "user_intent": "涨很多了怕踏空",
+            "user_text": "已经涨很多，我怕踏空，准备重仓",
+            "buy_reason": "感觉马上起飞",
+            "risk_awareness": "不清楚风险",
+            "worst_case_plan": "跌了就再看看",
+            "position_size": "50%",
+            "horizon": "短线",
+        },
+    )
+
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "HISTORYFOMO2",
+            "asset_type": "crypto",
+            "user_intent": "涨很多了怕踏空",
+            "user_text": "又涨了很多，我怕错过",
+            "buy_reason": "想追一下",
+            "risk_awareness": "不清楚",
+            "worst_case_plan": "再看看",
+            "position_size": "50%",
+            "horizon": "短线",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    history = data["historical_dna_scan"]
+    assert history["available"] is True
+    assert history["triggered_patterns"]
+    assert history["risk_adjustment"] > 0
+    assert "历史 DNA" in data["summary"]
+    assert "历史重复模式" in data["decision_reason"]
 
 
 def test_immune_report_kol_all_in_wait_or_dont_buy(monkeypatch):

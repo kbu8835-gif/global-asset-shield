@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from database import get_connection, init_db
+from immune.decision_record import DecisionRecord, canonical_user_id, list_decision_records
 from schemas import (
     InvestmentDNAProfile,
     InvestmentHealthProfile,
@@ -101,6 +102,7 @@ def create_investment_journal_entry(payload: InvestmentJournalCreateRequest) -> 
         )
         conn.commit()
         entry_id = int(cursor.lastrowid)
+    _mirror_legacy_entry_to_decision_record(payload, behavior_risk)
     _update_investment_dna(payload.user_id)
     health = _update_investment_health(payload.user_id)
     return InvestmentJournalCreateResponse(
@@ -235,9 +237,74 @@ def _update_investment_health(user_id: str) -> Dict[str, Any]:
 
 
 def _entries(user_id: str) -> List[Dict[str, Any]]:
+    records = list_decision_records(user_id)
+    return [_record_as_legacy_entry(record) for record in records]
+
+
+def _record_as_legacy_entry(record: DecisionRecord) -> Dict[str, Any]:
+    reason = " ".join([record.user_text, record.buy_reason, record.notes]).strip()
+    emotion_tag = "FOMO" if _contains(reason, FOMO_TERMS) else ""
+    return {
+        "id": record.id,
+        "user_id": record.user_id,
+        "asset_symbol": record.asset,
+        "asset_type": record.asset_type,
+        "action": record.user_intent or record.trade_direction,
+        "reason": reason,
+        "emotion_tag": emotion_tag,
+        "risk_score": record.risk_score,
+        "behavior_risk_score": record.bias_score,
+        "ai_advice": record.ai_decision,
+        "user_decision": record.user_decision,
+        "created_at": record.created_at,
+    }
+
+
+def _mirror_legacy_entry_to_decision_record(payload: InvestmentJournalCreateRequest, behavior_risk: int) -> None:
+    numeric_user_id = canonical_user_id(payload.user_id)
+    now = _now()
+    summary = _build_entry_summary(payload.asset_symbol, behavior_risk, 50)
     with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM investment_journal_entries WHERE user_id = ?", (user_id,)).fetchall()
-    return [dict(row) for row in rows]
+        conn.execute(
+            """
+            INSERT INTO journal_entries (
+                created_at, updated_at, title, status, entry_type,
+                user_id, asset, asset_type, user_intent, user_text, buy_reason, position_size,
+                risk_awareness, worst_case_plan, trade_direction,
+                risk_score, emotion_score, bias_score, conviction_score,
+                decision, final_decision, summary, full_report_json, review_status, notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                now,
+                now,
+                payload.asset_symbol,
+                "Open",
+                "investment_journal",
+                numeric_user_id,
+                payload.asset_symbol,
+                payload.asset_type,
+                payload.action,
+                payload.reason,
+                payload.reason,
+                "",
+                "",
+                "",
+                "long",
+                payload.risk_score,
+                100 if (payload.emotion_tag or "").upper() == "FOMO" else 0,
+                behavior_risk,
+                0,
+                payload.user_decision,
+                payload.ai_advice,
+                summary,
+                "{}",
+                "pending",
+                payload.reason,
+            ),
+        )
+        conn.commit()
 
 
 def _outcomes_for_user(user_id: str) -> List[Dict[str, Any]]:

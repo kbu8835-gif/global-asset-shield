@@ -75,6 +75,9 @@ export default function App() {
     try {
       const nextReport = await createImmuneReport(payload);
       setReport(nextReport);
+      if (nextReport?.report_id) {
+        setNotebookFocusId(nextReport.report_id);
+      }
       await loadDNA();
       window.setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (err) {
@@ -209,7 +212,7 @@ export default function App() {
       {mainView === "notebook" ? (
         <>
           <FriendlyError message={error} />
-          <NotebookWorkspace onError={setError} focusNotebookId={notebookFocusId} />
+          <NotebookWorkspace onError={setError} focusNotebookId={notebookFocusId} onNotebookChanged={loadDNA} />
         </>
       ) : null}
 

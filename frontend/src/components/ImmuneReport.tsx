@@ -77,6 +77,20 @@ function directionLabel(direction?: string) {
   return "做多 / 买入";
 }
 
+function JourneyStep({ index, title, detail, active }: { index: number; title: string; detail: string; active?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-3 ${active ? "border-cyan-300/50 bg-cyan-300/10" : "border-slate-800 bg-slate-950/60"}`}>
+      <div className="flex items-center gap-2">
+        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${active ? "bg-cyan-300 text-slate-950" : "bg-slate-800 text-slate-300"}`}>
+          {index}
+        </span>
+        <span className="text-sm font-semibold text-white">{title}</span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-400">{detail}</p>
+    </div>
+  );
+}
+
 function MarketData({ rawData, assetType }: { rawData: Record<string, any>; assetType: string }) {
   if (!rawData) return null;
   const isCrypto = assetType === "crypto";
@@ -304,6 +318,65 @@ function ObservationPlan({ plan }: { plan: any }) {
   );
 }
 
+function HistoricalDNAScan({ scan }: { scan: any }) {
+  if (!scan) return null;
+  const patterns = listItems(scan.triggered_patterns);
+  const warnings = listItems(scan.warnings);
+  const evidence = Array.isArray(scan.evidence) ? scan.evidence : [];
+  return (
+    <Section title="Historical DNA Scan">
+      <div className="rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
+        <div className="text-xs uppercase tracking-[0.16em] text-cyan-200">This scan remembers you</div>
+        <div className="mt-2 text-2xl font-semibold text-white">{scan.investor_type || "Unknown Investor"}</div>
+        <p className="mt-3 text-slate-300">{scan.summary}</p>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        {[
+          ["纪律", scan.discipline],
+          ["耐心", scan.patience],
+          ["情绪控制", scan.emotion_control],
+          ["独立思考", scan.independent_thinking],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+            <div className="text-xs text-slate-500">{label}</div>
+            <div className="mt-1 text-2xl font-semibold text-white">{String(value ?? 0)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4">
+        <div className="font-semibold text-white">本次重复模式</div>
+        {patterns.length ? (
+          <ul className="mt-2 space-y-2">{patterns.map((item, index) => <li key={index}>- {item}</li>)}</ul>
+        ) : (
+          <p className="mt-2 text-slate-400">这次没有明显重复历史高危模式。</p>
+        )}
+      </div>
+      <div className="mt-4">
+        <div className="font-semibold text-amber-100">历史提醒</div>
+        <ul className="mt-2 space-y-2">{warnings.map((item, index) => <li key={index}>- {item}</li>)}</ul>
+      </div>
+      {evidence.length ? (
+        <div className="mt-4">
+          <div className="font-semibold text-cyan-100">证据来源</div>
+          <div className="mt-2 space-y-2">
+            {evidence.map((item: any, index: number) => (
+              <div key={index} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span>#{item.record_id}</span>
+                  <span>{item.asset}</span>
+                  <span>{item.signal}</span>
+                  <span>{item.field}</span>
+                </div>
+                <p className="mt-2 text-slate-300">{item.excerpt}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </Section>
+  );
+}
+
 export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportProps) {
   if (!report) {
     return (
@@ -350,6 +423,17 @@ export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportPro
         <div className="mt-5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-4">
           <div className="text-sm uppercase tracking-[0.18em] text-cyan-200">What to do next</div>
           <div className="mt-2 text-2xl font-black text-white">{decisionTitle(report.final_decision)}</div>
+          {report.journal_saved && report.report_id ? (
+            <div className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-400/10 p-3 text-sm leading-6 text-emerald-50">
+              已保存为 Notebook #{report.report_id}。这次扫描不是一次性报告，下一步要进入笔记本写下你的最终决定，之后用复盘更新 DNA。
+            </div>
+          ) : null}
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <JourneyStep index={1} title="Scan" detail="资产风险、情绪、偏差和信念已完成扫描。" active />
+            <JourneyStep index={2} title="Notebook" detail="把最终决定和交易计划写进同一条记录。" active={Boolean(report.journal_saved)} />
+            <JourneyStep index={3} title="Review" detail="结果发生后复盘：卖飞、补仓、扛单、爆仓都要记录。" />
+            <JourneyStep index={4} title="DNA" detail="复盘会沉淀为长期行为画像，影响下一次扫描。" />
+          </div>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {nextActionsForDecision(report.final_decision).map((action, index) => (
               <div key={action} className="rounded-lg border border-slate-700 bg-slate-950/70 p-3">
@@ -363,7 +447,7 @@ export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportPro
               className="mt-4 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-100"
               onClick={() => onOpenNotebook?.(report.report_id)}
             >
-              Open in Notebook
+              继续到 Notebook 写最终决定
             </button>
           ) : null}
         </div>
@@ -372,6 +456,7 @@ export default function ImmuneReport({ report, onOpenNotebook }: ImmuneReportPro
       <div className="grid gap-5 lg:grid-cols-2">
         <DataConfidence confidence={report.data_confidence} />
         <ObservationPlan plan={report.observation_plan} />
+        <HistoricalDNAScan scan={report.historical_dna_scan} />
         <Section title="A. Risk Scan">
           <p className="font-semibold text-white">{report.risk_scan?.risk_score} / {report.risk_scan?.risk_level}</p>
           <MarketData rawData={report.risk_scan?.raw_data} assetType={report.asset_type} />

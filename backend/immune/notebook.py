@@ -112,6 +112,8 @@ def _detail(row: Dict[str, Any]) -> NotebookDetail:
         mistakes=row.get("mistakes"),
         lesson=row.get("lesson"),
         next_action=row.get("next_action"),
+        review_result_text=row.get("review_result_text"),
+        review_outcome_label=row.get("review_outcome_label"),
         ai_analysis=_analysis(row),
         ai_coach=build_ai_coach(row),
         timeline=_timeline(row),
@@ -221,6 +223,8 @@ def update_notebook(notebook_id: int, payload: NotebookUpdate, user_id: int) -> 
         "mistakes",
         "lesson",
         "next_action",
+        "review_result_text",
+        "review_outcome_label",
         "review_date",
         "trade_direction",
     }
@@ -345,6 +349,10 @@ def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: i
     elif mistake == "没有止损":
         next_action = "下次开仓前先写退出条件；如果只有“再看看”，这笔交易自动不合格。"
 
+    review_outcome_label = f"{outcome['market']}后{outcome['behavior']}" if outcome else mistake
+    if mistake in {"没有止损", "FOMO 追高", "外部观点替代计划", "仓位过重", "做空风险低估", "观察条件不清"}:
+        review_outcome_label = mistake
+
     return update_notebook(
         notebook_id,
         NotebookUpdate(
@@ -352,6 +360,8 @@ def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: i
             mistakes=mistake,
             lesson=lesson,
             next_action=next_action,
+            review_result_text=text,
+            review_outcome_label=review_outcome_label,
             review_date=_now(),
         ),
         user_id,

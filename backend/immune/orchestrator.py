@@ -5,6 +5,7 @@ from immune.decision import make_decision
 from immune.devil import build_devil_advocate
 from immune.direction import direction_label, normalize_trade_direction
 from immune.emotion import scan_emotion
+from immune.history import build_historical_dna_scan
 from immune.journal import save_report
 from immune.kol_intelligence import build_kol_risk_summary, calculate_user_kol_dependency
 from immune.llm import build_ai_coach
@@ -39,6 +40,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
     bias_detection = detect_bias(_combined_text(payload))
     kol_risk_scan = build_kol_risk_summary(_combined_text(payload), user_id)
     kol_dependency = calculate_user_kol_dependency(user_id).kol_dependency if kol_risk_scan else 0
+    historical_dna_scan = build_historical_dna_scan(payload, user_id)
     devil = build_devil_advocate(asset, payload.asset_type, risk_scan, emotion_scan, bias_detection, trade_direction)
     regret = simulate_regret(asset, emotion_scan["emotion_score"], bias_detection, payload.position_size, trade_direction)
     conviction = build_conviction_score(payload)
@@ -53,11 +55,13 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
         kol_triggered=bool(kol_risk_scan),
         data_confidence_score=data_confidence["score"],
         trade_direction=trade_direction,
+        historical_risk_adjustment=historical_dna_scan["risk_adjustment"],
+        historical_patterns=historical_dna_scan["triggered_patterns"],
     )
     summary = (
         f"{asset} 本次{direction_label(trade_direction)}免疫扫描：资产风险 {risk_scan['risk_score']}，情绪风险 "
         f"{emotion_scan['emotion_score']}，偏差风险 {bias_detection['bias_score']}，信念分 "
-        f"{conviction['score']}。{decision['decision_reason']}。"
+        f"{conviction['score']}。{historical_dna_scan['summary']}。{decision['decision_reason']}。"
     )
 
     report = {
@@ -74,6 +78,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
         "conviction_score": conviction,
         "munger_lens": munger_lens,
         "observation_plan": observation_plan,
+        "historical_dna_scan": historical_dna_scan,
         "final_decision": decision["final_decision"],
         "decision_reason": decision["decision_reason"],
         "position_advice": decision["position_advice"],

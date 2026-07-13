@@ -56,6 +56,8 @@ def test_notebook_crud_review_and_coach():
     reviewed = review_response.json()
     assert reviewed["status"] == "Reviewed"
     assert reviewed["mistakes"] == "没有止损"
+    assert reviewed["review_result_text"] == "后来我发现没有止损，差点情绪化补仓。"
+    assert reviewed["review_outcome_label"] == "没有止损"
     assert "BTC" not in reviewed["lesson"]
     assert "最坏情况计划" in reviewed["lesson"]
     assert "再看看" in reviewed["next_action"] or "退出条件" in reviewed["next_action"]
@@ -96,6 +98,8 @@ def test_notebook_review_personalizes_short_squeeze_risk():
     assert review_response.status_code == 200
     reviewed = review_response.json()
     assert reviewed["mistakes"] == "逆势补空"
+    assert reviewed["review_result_text"] == "结果继续上涨并出现逼空，我差点加空。"
+    assert reviewed["review_outcome_label"] == "上涨后补空"
     assert "上涨后补空" in reviewed["lesson"]
     assert "禁止补空" in reviewed["next_action"]
 

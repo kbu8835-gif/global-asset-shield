@@ -84,6 +84,7 @@ class ImmuneReportResponse(BaseModel):
     conviction_score: Dict[str, Any]
     munger_lens: Optional[Dict[str, Any]] = None
     observation_plan: Optional[Dict[str, Any]] = None
+    historical_dna_scan: Optional[Dict[str, Any]] = None
     ai_coach: Optional[Dict[str, Any]] = None
     final_decision: str
     decision_reason: str
@@ -116,6 +117,25 @@ class JournalEntry(BaseModel):
     full_report_json: Optional[str] = None
 
 
+class DNAEvidenceRecord(BaseModel):
+    record_id: int
+    source: str
+    asset: str
+    asset_type: str
+    trade_direction: Optional[str] = None
+    created_at: Optional[str] = None
+    field: str
+    keyword: str
+    excerpt: str
+
+
+class DNAEvidenceGroup(BaseModel):
+    signal: str
+    explanation: str
+    count: int
+    records: List[DNAEvidenceRecord] = Field(default_factory=list)
+
+
 class InvestmentDNAResponse(BaseModel):
     investor_type: str
     discipline: int = Field(ge=0, le=100)
@@ -128,6 +148,8 @@ class InvestmentDNAResponse(BaseModel):
     summary: str
     kol_summary: Optional[str] = None
     top_kol_influences: List[str] = Field(default_factory=list)
+    evidence_window: str = "最近0条"
+    evidence_sources: List[DNAEvidenceGroup] = Field(default_factory=list)
 
 
 class KOLProfileCreate(BaseModel):
@@ -374,6 +396,8 @@ class NotebookUpdate(BaseModel):
     mistakes: Optional[str] = None
     lesson: Optional[str] = None
     next_action: Optional[str] = None
+    review_result_text: Optional[str] = None
+    review_outcome_label: Optional[str] = None
     review_date: Optional[str] = None
 
 
@@ -407,6 +431,8 @@ class NotebookDetail(NotebookListItem):
     mistakes: Optional[str] = None
     lesson: Optional[str] = None
     next_action: Optional[str] = None
+    review_result_text: Optional[str] = None
+    review_outcome_label: Optional[str] = None
     ai_analysis: Dict[str, Any] = Field(default_factory=dict)
     ai_coach: str
     timeline: List[Dict[str, str]]

@@ -54,6 +54,25 @@ export type InvestmentDNA = {
   emotion_control: number;
   independent_thinking: number;
   summary: string;
+  kol_summary?: string | null;
+  top_kol_influences?: string[];
+  evidence_window?: string;
+  evidence_sources?: Array<{
+    signal: string;
+    explanation: string;
+    count: number;
+    records: Array<{
+      record_id: number;
+      source: string;
+      asset: string;
+      asset_type: string;
+      trade_direction?: string | null;
+      created_at?: string | null;
+      field: string;
+      keyword: string;
+      excerpt: string;
+    }>;
+  }>;
 };
 
 export type NotebookListItem = {
@@ -81,6 +100,8 @@ export type NotebookDetail = NotebookListItem & {
   mistakes?: string | null;
   lesson?: string | null;
   next_action?: string | null;
+  review_result_text?: string | null;
+  review_outcome_label?: string | null;
   ai_analysis: Record<string, any>;
   ai_coach: string;
   timeline: Array<{ date: string; event: string }>;
@@ -103,6 +124,8 @@ export type NotebookUpdate = Partial<{
   mistakes: string;
   lesson: string;
   next_action: string;
+  review_result_text: string;
+  review_outcome_label: string;
   review_date: string;
 }>;
 

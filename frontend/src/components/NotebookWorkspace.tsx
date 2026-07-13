@@ -13,6 +13,7 @@ import {
 type NotebookWorkspaceProps = {
   onError: (message: string) => void;
   focusNotebookId?: number | null;
+  onNotebookChanged?: () => void | Promise<void>;
 };
 
 const inputClass =
@@ -64,7 +65,75 @@ function formatSaveState(saving: boolean, savedAt: string) {
   return `已保存 ${savedAt}`;
 }
 
-export default function NotebookWorkspace({ onError, focusNotebookId }: NotebookWorkspaceProps) {
+function sourceLabel(entryType: string) {
+  if (entryType === "immune_report") return "来自免疫扫描";
+  if (entryType === "manual") return "手动笔记";
+  return "投资记录";
+}
+
+function hasText(value?: string | null) {
+  return Boolean(value && value.trim().length > 0);
+}
+
+function analysisScore(draft: NotebookDetail, key: string) {
+  return Number(draft.ai_analysis?.[key]?.score ?? 0);
+}
+
+function planCompletion(draft: NotebookDetail) {
+  const fields = [draft.notes, draft.buy_reason, draft.risk_awareness, draft.worst_case_plan];
+  const completed = fields.filter(hasText).length;
+  return Math.round((completed / fields.length) * 100);
+}
+
+function missingPlanItems(draft: NotebookDetail) {
+  const items = [
+    ["为什么关注它", draft.notes],
+    ["交易逻辑", draft.buy_reason],
+    ["失效条件", draft.risk_awareness],
+    ["亏损退出计划", draft.worst_case_plan],
+  ];
+  return items.filter(([, value]) => !hasText(value)).map(([label]) => label);
+}
+
+function workflowStage(draft: NotebookDetail) {
+  const completion = planCompletion(draft);
+  const hasScan = draft.entry_type === "immune_report" || analysisScore(draft, "risk") > 0;
+  const hasFinalDecision = draft.decision !== "Wait";
+  const reviewed = draft.status === "Reviewed" || hasText(draft.mistakes) || hasText(draft.lesson);
+
+  if (reviewed) {
+    return {
+      label: "已复盘",
+      detail: "结果已经回流到 DNA。下一步是把这条规则带到下一次决策里。",
+      nextAction: "查看教训，更新下一条交易规则。",
+      step: 4,
+    };
+  }
+  if (completion < 100) {
+    return {
+      label: hasScan ? "补全交易计划" : "补全扫描前计划",
+      detail: "先把理由、失效条件和退出计划写清楚。写不清楚，就先不要急着开仓。",
+      nextAction: `还差 ${missingPlanItems(draft).join("、")}。`,
+      step: hasScan ? 2 : 1,
+    };
+  }
+  if (!hasFinalDecision) {
+    return {
+      label: "写最终决定",
+      detail: "AI 只能提醒风险，真正的纪律来自你把决定写下来。",
+      nextAction: "选择 Buy / Wait / Don't Buy，或做空场景下选择 Short / Wait / Don't Short。",
+      step: 3,
+    };
+  }
+  return {
+    label: "等待结果复盘",
+    detail: "这条记录已经具备复盘基础。等结果发生后，回来写下真实反馈。",
+    nextAction: "结果出现后打开复盘区，写下你实际怎么处理。",
+    step: 3,
+  };
+}
+
+export default function NotebookWorkspace({ onError, focusNotebookId, onNotebookChanged }: NotebookWorkspaceProps) {
   const [items, setItems] = useState<NotebookListItem[]>([]);
   const [selected, setSelected] = useState<NotebookDetail | null>(null);
   const [draft, setDraft] = useState<NotebookDetail | null>(null);
@@ -99,7 +168,11 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
 
   useEffect(() => {
     if (!focusNotebookId) return;
-    openNotebook(focusNotebookId).catch((err) => onError(err instanceof Error ? err.message : "Failed to open notebook"));
+    const focus = async () => {
+      await loadList();
+      await openNotebook(focusNotebookId);
+    };
+    focus().catch((err) => onError(err instanceof Error ? err.message : "Failed to open notebook"));
   }, [focusNotebookId]);
 
   useEffect(() => {
@@ -157,6 +230,9 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     setDraft(updated);
     setLastSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     await loadList();
+    if (showState) {
+      await onNotebookChanged?.();
+    }
     if (showState) setSaving(false);
   };
 
@@ -171,6 +247,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     });
     await loadList();
     await openNotebook(created.id);
+    await onNotebookChanged?.();
   };
 
   const submitReview = async () => {
@@ -179,6 +256,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     setSelected(reviewed);
     setDraft(reviewed);
     await loadList();
+    await onNotebookChanged?.();
   };
 
   const removeNotebook = async (item: NotebookListItem) => {
@@ -194,6 +272,7 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     if (draft?.id === item.id && nextItems[0]) {
       await openNotebook(nextItems[0].id);
     }
+    await onNotebookChanged?.();
   };
 
   const stats = useMemo(() => {
@@ -202,6 +281,9 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
     const archived = items.filter((item) => item.status === "Archived").length;
     return { total: items.length, open, reviewed, archived };
   }, [items]);
+  const currentStage = useMemo(() => (draft ? workflowStage(draft) : null), [draft]);
+  const currentCompletion = useMemo(() => (draft ? planCompletion(draft) : 0), [draft]);
+  const currentMissingItems = useMemo(() => (draft ? missingPlanItems(draft) : []), [draft]);
 
   return (
     <section className="mx-auto max-w-7xl px-5 py-8">
@@ -209,12 +291,12 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
         <aside className="rounded-lg border border-slate-800 bg-slate-950/80 p-4">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <div className="text-sm uppercase tracking-[0.18em] text-cyan-200">Notebook</div>
-              <h2 className="mt-1 text-xl font-semibold text-white">AI Investment Notebook</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">这不是交易流水。这里记录你为什么动手、何时停手、事后学到了什么。</p>
+              <div className="text-sm uppercase tracking-[0.18em] text-cyan-200">Workbench</div>
+              <h2 className="mt-1 text-xl font-semibold text-white">投资主工作台</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">每一条记录都串起：扫描、计划、决定、复盘和 DNA 更新。</p>
             </div>
             <button onClick={createBlank} className="rounded-lg bg-cyan-300 px-3 py-2 text-sm font-semibold text-slate-950">
-              New
+              新建
             </button>
           </div>
           <div className="mb-4 grid grid-cols-4 gap-2">
@@ -229,6 +311,15 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
                 <div className="mt-1 text-lg font-semibold text-white">{value}</div>
               </div>
             ))}
+          </div>
+          <div className="mb-4 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-3">
+            <div className="text-xs uppercase tracking-[0.16em] text-cyan-200">Today</div>
+            <div className="mt-2 text-sm font-semibold text-white">
+              {stats.open ? `${stats.open} 条记录等待决定或复盘` : "暂无待处理记录"}
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              Notebook 不是仓库。它是你下单前的刹车，和下单后的复盘桌。
+            </p>
           </div>
           <input className={inputClass} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产、理由或决定..." />
           <div className="mt-3 grid grid-cols-3 gap-2">
@@ -275,9 +366,9 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
                   <button
                     className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-red-300/60 hover:text-red-100"
                     onClick={() => removeNotebook(item).catch((err) => onError(err instanceof Error ? err.message : "Failed to delete notebook"))}
-                    title="Delete notebook"
+                    title="删除笔记"
                   >
-                    Delete
+                    删除
                   </button>
                 </div>
               </div>
@@ -292,6 +383,44 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
         <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-6">
           {draft ? (
             <div className="mx-auto max-w-3xl">
+              <div className="mb-6 rounded-lg border border-cyan-300/30 bg-gradient-to-br from-cyan-300/15 to-slate-900/80 p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Main Workbench</div>
+                    <h2 className="mt-2 text-2xl font-semibold text-white">{currentStage?.label}</h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{currentStage?.detail}</p>
+                    <p className="mt-2 text-sm font-semibold text-cyan-100">下一步：{currentStage?.nextAction}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-4 text-center">
+                    <div className="text-xs text-slate-500">计划完整度</div>
+                    <div className="mt-1 text-3xl font-semibold text-white">{currentCompletion}%</div>
+                    <div className="mt-2 h-2 w-28 rounded-full bg-slate-800">
+                      <div className="h-2 rounded-full bg-cyan-300" style={{ width: `${currentCompletion}%` }} />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-2 md:grid-cols-5">
+                  {[
+                    ["Scan", 1],
+                    ["Plan", 2],
+                    ["Decision", 3],
+                    ["Review", 4],
+                    ["DNA", 5],
+                  ].map(([label, step]) => (
+                    <div
+                      key={String(label)}
+                      className={`rounded-lg border px-3 py-2 text-center text-xs font-semibold ${
+                        (currentStage?.step ?? 0) >= Number(step) - 1
+                          ? "border-cyan-300/50 bg-cyan-300/10 text-cyan-50"
+                          : "border-slate-800 bg-slate-950/60 text-slate-500"
+                      }`}
+                    >
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="mb-6">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(draft.status)}`}>{draft.status}</div>
@@ -305,6 +434,67 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
                 <div className="mt-2 text-sm text-slate-400">
                   {draft.asset} · {draft.asset_type} · {directionLabel(draft.trade_direction)} · {formatDate(draft.created_at)}
                 </div>
+              </div>
+
+              <div className="mb-6 rounded-lg border border-cyan-300/25 bg-cyan-300/10 p-4">
+                <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Decision Record #{draft.id}</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{sourceLabel(draft.entry_type)} · 当前步骤：{currentStage?.label}</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      这条记录会串起：免疫扫描 → 我的最终决定 → 结果复盘 → DNA 更新。这里写得越具体，之后的复盘越有用。
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => saveDraft(true)} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-950">
+                      保存
+                    </button>
+                    <button onClick={() => setReviewOpen(true)} className="rounded-lg border border-cyan-300/40 px-4 py-2 text-sm font-semibold text-cyan-100">
+                      去复盘
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">这条记录还缺什么？</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-400">
+                      目标不是写很多，而是下单前必须留下可以复盘的证据。
+                    </p>
+                  </div>
+                  <div className="text-right text-sm text-slate-400">完整度 {currentCompletion}%</div>
+                </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-4">
+                    {[
+                      ["为什么关注它", draft.notes],
+                      ["交易逻辑", draft.buy_reason],
+                      ["失效条件", draft.risk_awareness],
+                      ["退出计划", draft.worst_case_plan],
+                    ].map(([label, value]) => (
+                      <div
+                        key={String(label)}
+                        className={`rounded-lg border px-3 py-3 text-sm ${
+                          hasText(String(value ?? ""))
+                            ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                            : "border-amber-300/30 bg-amber-400/10 text-amber-100"
+                        }`}
+                      >
+                        <div className="font-semibold">{hasText(String(value ?? "")) ? "已写" : "待补"}</div>
+                        <div className="mt-1 text-xs opacity-80">{label}</div>
+                      </div>
+                    ))}
+                </div>
+                {currentMissingItems.length ? (
+                  <p className="mt-4 text-sm leading-6 text-amber-100">
+                    先补：{currentMissingItems.join("、")}。如果这些写不出来，这不是投资计划，只是一个冲动入口。
+                  </p>
+                ) : (
+                  <p className="mt-4 text-sm leading-6 text-emerald-100">
+                    这条记录已经具备复盘基础。现在最重要的是按计划执行，而不是临场改规则。
+                  </p>
+                )}
               </div>
 
               <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
@@ -407,18 +597,24 @@ export default function NotebookWorkspace({ onError, focusNotebookId }: Notebook
               </div>
 
               <details className="mt-6 rounded-lg border border-slate-800 bg-slate-900/60 p-5" open={reviewOpen} onToggle={(event) => setReviewOpen(event.currentTarget.open)}>
-                <summary className="cursor-pointer text-lg font-semibold text-white">复盘：结果发生后再打开</summary>
+                <summary className="cursor-pointer text-lg font-semibold text-white">复盘工作台：结果发生后再打开</summary>
+                <p className="mt-3 text-sm leading-6 text-slate-400">
+                  写真实结果，不用迎合系统。比如：提前卖飞、死扛、补仓、止损、加空、爆仓、横盘后失去耐心。AI 会把它归类成下一条规则。
+                </p>
                 <textarea
                   className={`${areaClass} mt-4`}
                   value={reviewText}
                   onChange={(event) => setReviewText(event.target.value)}
-                  placeholder="结果如何？我当时哪里想错了？有没有违反自己的规则？"
+                  placeholder="结果如何？你实际做了什么？有没有违反自己提前写下的规则？"
                 />
                 <button onClick={submitReview} className="mt-3 rounded-lg bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950">
                   AI 复盘
                 </button>
                 {(draft.mistakes || draft.lesson || draft.next_action) && (
-                  <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
+                  <div className="mt-4 space-y-3 rounded-lg border border-emerald-300/20 bg-emerald-400/10 p-4 text-sm leading-6 text-slate-300">
+                    <div className="text-sm font-semibold text-emerald-100">已回流到 DNA 与 Notebook 时间线</div>
+                    {draft.review_outcome_label ? <p><span className="text-white">系统识别：</span>{draft.review_outcome_label}</p> : null}
+                    {draft.review_result_text ? <p><span className="text-white">你的复盘原文：</span>{draft.review_result_text}</p> : null}
                     <p><span className="text-white">错误类型：</span>{draft.mistakes}</p>
                     <p><span className="text-white">教训：</span>{draft.lesson}</p>
                     <p><span className="text-white">下一条规则：</span>{draft.next_action}</p>
