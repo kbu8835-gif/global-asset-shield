@@ -88,6 +88,7 @@ class ImmuneReportResponse(BaseModel):
     observation_plan: Optional[Dict[str, Any]] = None
     historical_dna_scan: Optional[Dict[str, Any]] = None
     ai_coach: Optional[Dict[str, Any]] = None
+    okx_ai_agent_result: Optional[Dict[str, Any]] = None
     final_decision: str
     decision_reason: str
     position_advice: str

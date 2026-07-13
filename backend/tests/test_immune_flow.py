@@ -59,6 +59,10 @@ def test_immune_report_fomo_saves_journal(monkeypatch):
     assert data["munger_lens"]["framework"] == "Munger Lens"
     assert data["munger_lens"]["munger_verdict"] in {"No", "Too Hard", "Small Bet"}
     assert data["historical_dna_scan"]["available"] is True
+    assert data["okx_ai_agent_result"]["designed_for"] == "OKX.AI A2MCP"
+    assert data["okx_ai_agent_result"]["decision"] == data["final_decision"]
+    assert data["okx_ai_agent_result"]["mini_notebook"]["what_user_wrote"]["position_size"] == "50%"
+    assert data["okx_ai_agent_result"]["must_answer_before_trade"]
 
 
 def test_immune_report_uses_historical_dna_patterns(monkeypatch):

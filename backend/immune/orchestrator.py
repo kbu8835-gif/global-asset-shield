@@ -10,6 +10,7 @@ from immune.journal import save_report
 from immune.kol_intelligence import build_kol_risk_summary, calculate_user_kol_dependency
 from immune.llm import build_ai_coach
 from immune.munger import build_munger_lens
+from immune.okx_ai_result import build_okx_ai_agent_result
 from immune.regret import simulate_regret
 from immune.risk import run_risk_scan
 from immune.watch import build_observation_plan
@@ -98,6 +99,7 @@ def build_immune_report(payload: ImmuneReportRequest, user_id: int) -> ImmuneRep
         "kol_risk_scan": kol_risk_scan,
     }
     report["ai_coach"] = build_ai_coach(payload, report, user_id)
+    report["okx_ai_agent_result"] = build_okx_ai_agent_result(payload, report)
 
     report_id = save_report(payload, report, user_id)
     report["report_id"] = report_id

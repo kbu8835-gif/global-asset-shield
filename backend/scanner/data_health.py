@@ -5,6 +5,7 @@ import requests
 from config import DEEPSEEK_API_BASE, DEEPSEEK_API_KEY, DEEPSEEK_MODEL
 from database import is_database_connected
 from scanner.cn_stock import fetch_cn_stock
+from scanner.okx_onchain import OnchainOSUnavailable, fetch_okx_onchain_token
 from scanner.stock import fetch_yahoo_chart_stock
 
 
@@ -14,6 +15,7 @@ def build_data_health() -> Dict[str, Any]:
         _check_deepseek(),
         _check_dexscreener(),
         _check_goplus(),
+        _check_okx_onchainos(),
         _check_yahoo_chart(),
         _check_cn_stock(),
     ]
@@ -94,6 +96,26 @@ def _check_goplus() -> Dict[str, Any]:
         return _source("GoPlus Token Security", "degraded", "GoPlus 可达，但测试没有返回安全数据。", False, True)
     except Exception as exc:
         return _source("GoPlus Token Security", "degraded", f"GoPlus 暂时不可达：{exc.__class__.__name__}，合约安全会使用占位 fallback。", False, True)
+
+
+def _check_okx_onchainos() -> Dict[str, Any]:
+    try:
+        data = fetch_okx_onchain_token("PEPE", timeout=8)
+        if data and data.get("price_usd") is not None:
+            holders = data.get("holders")
+            holder_text = f"，持有人约 {holders:,.0f}" if holders is not None else ""
+            return _source(
+                "OKX Onchain OS DEX Data",
+                "connected",
+                f"OKX 链上行情增强源可用，PEPE 价格 {data['price_usd']}{holder_text}。",
+                True,
+                True,
+            )
+        return _source("OKX Onchain OS DEX Data", "degraded", "OKX Onchain OS 可运行，但测试没有返回有效价格。", False, True)
+    except OnchainOSUnavailable:
+        return _source("OKX Onchain OS DEX Data", "fallback", "当前环境未安装 onchainos CLI，系统会继续使用 DexScreener/GoPlus/mock。", False, True)
+    except Exception as exc:
+        return _source("OKX Onchain OS DEX Data", "degraded", f"OKX Onchain OS 暂时不可用：{exc.__class__.__name__}，系统会继续使用现有数据源。", False, True)
 
 
 def _check_yahoo_chart() -> Dict[str, Any]:
