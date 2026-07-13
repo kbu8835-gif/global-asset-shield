@@ -240,7 +240,9 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
       trade_direction: draft.trade_direction || "long",
     });
     setSelected(updated);
-    setDraft(updated);
+    if (showState) {
+      setDraft(updated);
+    }
     setLastSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     await loadList();
     if (showState) {
