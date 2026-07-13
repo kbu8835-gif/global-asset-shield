@@ -50,6 +50,8 @@ def _field_texts(entry: DecisionRecord) -> List[Tuple[str, str]]:
         ("买入/做空理由", entry.buy_reason),
         ("仓位", entry.position_size),
         ("风险意识", entry.risk_awareness),
+        ("有利情况计划", entry.favorable_plan),
+        ("横盘等待计划", entry.sideways_plan),
         ("最坏情况计划", entry.worst_case_plan),
         ("Notebook 记录", entry.notes),
         ("用户最终决定", entry.user_decision),

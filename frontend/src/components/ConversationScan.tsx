@@ -6,7 +6,7 @@ type ConversationScanProps = {
   onSubmit: (payload: ImmuneReportPayload) => void;
 };
 
-type Step = "asset" | "direction" | "intent" | "position" | "worstCase" | "risk" | "ready" | "running";
+type Step = "asset" | "direction" | "intent" | "position" | "favorable" | "sideways" | "worstCase" | "risk" | "ready" | "running";
 
 const intentReasons: Record<string, string> = {
   KOL推荐: "看到KOL推荐，感觉马上要起飞",
@@ -24,6 +24,9 @@ const directionOptions = [
 const positionOptions = ["5%", "10%", "30%", "50%", "ALL IN"];
 const worstCaseSuggestions = ["下跌 10% 就止损", "等 24 小时再决定", "不补仓，先复盘"];
 const shortWorstCaseSuggestions = ["上涨 10% 就止损", "不加空，先复盘", "等收盘再决定"];
+const favorableSuggestions = ["分批止盈，不临时加仓", "继续持有，但移动止损", "先保存利润，再复盘"];
+const shortFavorableSuggestions = ["分批止盈空单", "跌到目标位先减仓", "不贪心，移动止盈"];
+const sidewaysSuggestions = ["横盘 3 天重新评估", "没有新证据就不加仓", "等成交量确认再行动"];
 const riskSuggestions = ["流动性不足", "KOL 喊单情绪过热", "我说不清最大风险"];
 const assetTypeLabels = {
   crypto: "加密货币",
@@ -60,6 +63,8 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
   const [tradeDirection, setTradeDirection] = useState<"long" | "short">("long");
   const [intent, setIntent] = useState("");
   const [positionSize, setPositionSize] = useState("");
+  const [favorablePlan, setFavorablePlan] = useState("");
+  const [sidewaysPlan, setSidewaysPlan] = useState("");
   const [worstCasePlan, setWorstCasePlan] = useState("");
   const [riskAwareness, setRiskAwareness] = useState("");
 
@@ -73,7 +78,8 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
     const effectiveDirection = directionEnabled ? tradeDirection : "long";
     const directionText = directionOptions.find((option) => option.value === effectiveDirection)?.prompt || "想买入或看涨";
     const adverseMove = effectiveDirection === "short" ? "上涨 25%" : "下跌 25%";
-    const userText = `我对 ${cleanedAsset} 的方向是${directionText}，因为 ${intent || "不清楚"}，准备投入 ${positionSize || "未确定"}，如果${adverseMove}，我会${worstCasePlan || "还没想清楚"}。`;
+    const favorableMove = effectiveDirection === "short" ? "下跌" : "上涨";
+    const userText = `我对 ${cleanedAsset} 的方向是${directionText}，因为 ${intent || "不清楚"}，准备投入 ${positionSize || "未确定"}。如果${favorableMove}，我会${favorablePlan || "还没想清楚"}；如果横盘，我会${sidewaysPlan || "还没想清楚"}；如果${adverseMove}，我会${worstCasePlan || "还没想清楚"}。`;
     return {
       asset: cleanedAsset,
       asset_type: assetType,
@@ -83,6 +89,8 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
       buy_reason: buyReason,
       risk_awareness: riskAwareness,
       worst_case_plan: worstCasePlan,
+      favorable_plan: favorablePlan,
+      sideways_plan: sidewaysPlan,
       position_size: positionSize,
       horizon: "短线",
     };
@@ -159,7 +167,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
             </>
           )}
 
-          {(step === "intent" || step === "position" || step === "worstCase" || step === "risk" || ready) && (
+          {(step === "intent" || step === "position" || step === "favorable" || step === "sideways" || step === "worstCase" || step === "risk" || ready) && (
             <>
               {directionEnabled ? userBubble(directionOptions.find((option) => option.value === tradeDirection)?.label) : userBubble(`${assetLabel} / ${assetTypeLabels[assetType]}`)}
               {aiBubble(
@@ -185,7 +193,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
             </>
           )}
 
-          {(step === "position" || step === "worstCase" || step === "risk" || ready) && (
+          {(step === "position" || step === "favorable" || step === "sideways" || step === "worstCase" || step === "risk" || ready) && (
             <>
               {userBubble(intent)}
               {aiBubble("How much of your portfolio are you planning to put in?", step === "position")}
@@ -196,7 +204,7 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                     className={`${chipClass} ${positionSize === option ? "border-cyan-300 bg-cyan-300/15" : ""}`}
                     onClick={() => {
                       setPositionSize(option);
-                      setStep("worstCase");
+                      setStep("favorable");
                     }}
                   >
                     {option}
@@ -206,9 +214,82 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
             </>
           )}
 
-          {(step === "worstCase" || step === "risk" || ready) && (
+          {(step === "favorable" || step === "sideways" || step === "worstCase" || step === "risk" || ready) && (
             <>
               {userBubble(positionSize)}
+              {aiBubble(
+                tradeDirection === "short"
+                  ? `如果 ${assetLabel} 下跌，你准备怎么处理盈利空单？`
+                  : `如果 ${assetLabel} 上涨，你准备怎么处理盈利仓位？`,
+                step === "favorable",
+              )}
+              <div className="flex justify-end">
+                <div className="w-full max-w-xl">
+                  <div className="mb-2 flex flex-wrap justify-end gap-2">
+                    {(tradeDirection === "short" ? shortFavorableSuggestions : favorableSuggestions).map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:border-cyan-300 hover:text-cyan-100"
+                        onClick={() => setFavorablePlan(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={favorablePlan}
+                      onChange={(event) => setFavorablePlan(event.target.value)}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
+                      placeholder={tradeDirection === "short" ? "下跌到目标位分批止盈" : "上涨后分批止盈，不临时加仓"}
+                    />
+                    <button className={chipClass} onClick={() => setStep("sideways")} disabled={!favorablePlan.trim()}>
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {(step === "sideways" || step === "worstCase" || step === "risk" || ready) && (
+            <>
+              {userBubble(favorablePlan)}
+              {aiBubble(`如果 ${assetLabel} 横盘，没有结果，你最多等多久？`, step === "sideways")}
+              <div className="flex justify-end">
+                <div className="w-full max-w-xl">
+                  <div className="mb-2 flex flex-wrap justify-end gap-2">
+                    {sidewaysSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:border-cyan-300 hover:text-cyan-100"
+                        onClick={() => setSidewaysPlan(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={sidewaysPlan}
+                      onChange={(event) => setSidewaysPlan(event.target.value)}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300"
+                      placeholder="横盘 3 天没有新证据就重新评估"
+                    />
+                    <button className={chipClass} onClick={() => setStep("worstCase")} disabled={!sidewaysPlan.trim()}>
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {(step === "worstCase" || step === "risk" || ready) && (
+            <>
+              {userBubble(sidewaysPlan)}
               {aiBubble(
                 tradeDirection === "short"
                   ? `假如 ${assetLabel} 上涨 25%，你怎么办？`
@@ -296,6 +377,8 @@ export default function ConversationScan({ loading, onSubmit }: ConversationScan
                     setIntent("");
                     setTradeDirection("long");
                     setPositionSize("");
+                    setFavorablePlan("");
+                    setSidewaysPlan("");
                     setWorstCasePlan("");
                     setRiskAwareness("");
                   }}

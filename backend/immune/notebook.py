@@ -107,6 +107,8 @@ def _detail(row: Dict[str, Any]) -> NotebookDetail:
         buy_reason=row.get("buy_reason"),
         risk_awareness=row.get("risk_awareness"),
         worst_case_plan=row.get("worst_case_plan"),
+        favorable_plan=row.get("favorable_plan"),
+        sideways_plan=row.get("sideways_plan"),
         position_size=row.get("position_size"),
         notes=row.get("notes"),
         mistakes=row.get("mistakes"),
@@ -165,10 +167,10 @@ def create_notebook(payload: NotebookCreate, user_id: int) -> NotebookDetail:
                 created_at, updated_at, title, status, entry_type,
                 user_id,
                 asset, asset_type, trade_direction, user_text, buy_reason, risk_awareness, worst_case_plan,
-                position_size, risk_score, emotion_score, bias_score, conviction_score,
+                favorable_plan, sideways_plan, position_size, risk_score, emotion_score, bias_score, conviction_score,
                 decision, final_decision, summary, full_report_json, review_status, notes
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 now,
@@ -184,6 +186,8 @@ def create_notebook(payload: NotebookCreate, user_id: int) -> NotebookDetail:
                 payload.buy_reason or "",
                 payload.risk_awareness or "",
                 payload.worst_case_plan or "",
+                payload.favorable_plan or "",
+                payload.sideways_plan or "",
                 payload.position_size or "",
                 0,
                 0,
@@ -219,6 +223,8 @@ def update_notebook(notebook_id: int, payload: NotebookUpdate, user_id: int) -> 
         "user_text",
         "risk_awareness",
         "worst_case_plan",
+        "favorable_plan",
+        "sideways_plan",
         "position_size",
         "mistakes",
         "lesson",
@@ -296,6 +302,8 @@ def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: i
             current.worst_case_plan or "",
             current.risk_awareness or "",
             current.notes or "",
+            current.favorable_plan or "",
+            current.sideways_plan or "",
         ]
     )
     direction = normalize_trade_direction(current.trade_direction)
@@ -329,6 +337,10 @@ def review_notebook(notebook_id: int, payload: NotebookReviewRequest, user_id: i
         lesson_parts.append(f"你当时的最坏情况计划是“{current.worst_case_plan}”，检查它是否真的能执行，而不是事后安慰。")
     else:
         lesson_parts.append("这条记录缺少最坏情况计划，所以复盘时最该补的是退出条件。")
+    if current.favorable_plan:
+        lesson_parts.append(f"你当时写的有利情况计划是“{current.favorable_plan}”，复盘时检查盈利处理是否按计划执行。")
+    if current.sideways_plan:
+        lesson_parts.append(f"你当时写的横盘计划是“{current.sideways_plan}”，复盘时检查自己有没有被无聊逼着乱动。")
     lesson = " ".join(lesson_parts)
 
     if direction == "short":

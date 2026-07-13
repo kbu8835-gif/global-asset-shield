@@ -152,6 +152,8 @@ def init_db() -> None:
         _ensure_column(conn, "journal_entries", "trade_direction", "TEXT")
         _ensure_column(conn, "journal_entries", "risk_awareness", "TEXT")
         _ensure_column(conn, "journal_entries", "worst_case_plan", "TEXT")
+        _ensure_column(conn, "journal_entries", "favorable_plan", "TEXT")
+        _ensure_column(conn, "journal_entries", "sideways_plan", "TEXT")
         _ensure_column(conn, "journal_entries", "decision", "TEXT")
         _ensure_column(conn, "journal_entries", "title", "TEXT")
         _ensure_column(conn, "journal_entries", "status", "TEXT DEFAULT 'Open'")
@@ -385,11 +387,11 @@ def save_journal_entry(payload: Dict[str, Any], report: Dict[str, Any], user_id:
                 created_at, updated_at, title, status, entry_type,
                 user_id,
                 asset, asset_type, user_intent, user_text, buy_reason, position_size, risk_awareness, worst_case_plan,
-                trade_direction,
+                favorable_plan, sideways_plan, trade_direction,
                 risk_score, emotion_score, bias_score, conviction_score,
                 decision, final_decision, summary, full_report_json, review_status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (now := datetime.now(timezone.utc).isoformat()),
@@ -406,6 +408,8 @@ def save_journal_entry(payload: Dict[str, Any], report: Dict[str, Any], user_id:
                 payload.get("position_size"),
                 payload.get("risk_awareness"),
                 payload.get("worst_case_plan"),
+                payload.get("favorable_plan"),
+                payload.get("sideways_plan"),
                 payload.get("trade_direction") or report.get("trade_direction") or "long",
                 report["risk_scan"]["risk_score"],
                 report["emotion_scan"]["emotion_score"],

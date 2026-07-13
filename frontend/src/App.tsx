@@ -35,6 +35,8 @@ const defaultForm: ImmuneReportPayload = {
   buy_reason: "看到KOL推荐，感觉马上要起飞",
   risk_awareness: "不太清楚风险",
   worst_case_plan: "跌了就再看看",
+  favorable_plan: "涨了先分批止盈，不临时加仓",
+  sideways_plan: "横盘 3 天没有新证据就重新评估",
   position_size: "50%",
   horizon: "短线",
 };

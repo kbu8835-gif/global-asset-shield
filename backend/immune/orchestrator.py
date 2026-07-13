@@ -23,6 +23,8 @@ def _combined_text(payload: ImmuneReportRequest) -> str:
             payload.user_text or "",
             payload.buy_reason or "",
             payload.risk_awareness or "",
+            payload.favorable_plan or "",
+            payload.sideways_plan or "",
             payload.worst_case_plan or "",
             payload.position_size or "",
             payload.horizon or "",

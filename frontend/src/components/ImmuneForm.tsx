@@ -91,6 +91,16 @@ export default function ImmuneForm({ form, loading, onChange, onSubmit }: Immune
             <span className="mb-2 block text-xs font-medium uppercase text-slate-400">Worst Case Plan</span>
             <input className={fieldClass} value={form.worst_case_plan} onChange={(event) => update("worst_case_plan", event.target.value)} />
           </label>
+          <label className="block">
+            <span className="mb-2 block text-xs font-medium uppercase text-slate-400">
+              {form.trade_direction === "short" ? "Profit Plan / 下跌后怎么处理" : "Profit Plan / 上涨后怎么处理"}
+            </span>
+            <input className={fieldClass} value={form.favorable_plan || ""} onChange={(event) => update("favorable_plan", event.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-xs font-medium uppercase text-slate-400">Sideways Plan / 横盘多久处理</span>
+            <input className={fieldClass} value={form.sideways_plan || ""} onChange={(event) => update("sideways_plan", event.target.value)} />
+          </label>
           <label className="block md:max-w-xs">
             <span className="mb-2 block text-xs font-medium uppercase text-slate-400">Horizon</span>
             <input className={fieldClass} value={form.horizon} onChange={(event) => update("horizon", event.target.value)} />

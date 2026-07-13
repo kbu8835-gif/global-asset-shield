@@ -27,6 +27,8 @@ def build_conviction_score(payload: ImmuneReportRequest) -> dict:
         [
             payload.buy_reason or "",
             payload.risk_awareness or "",
+            payload.favorable_plan or "",
+            payload.sideways_plan or "",
             payload.worst_case_plan or "",
             payload.user_text or "",
             payload.position_size or "",
@@ -94,4 +96,3 @@ def build_conviction_score(payload: ImmuneReportRequest) -> dict:
         "problems": list(dict.fromkeys(problems)),
         "improvement_questions": questions,
     }
-

@@ -20,6 +20,8 @@ class DecisionRecord:
     position_size: str
     risk_awareness: str
     worst_case_plan: str
+    favorable_plan: str
+    sideways_plan: str
     risk_score: int
     emotion_score: int
     bias_score: int
@@ -47,6 +49,8 @@ class DecisionRecord:
                 self.position_size,
                 self.risk_awareness,
                 self.worst_case_plan,
+                self.favorable_plan,
+                self.sideways_plan,
                 self.notes,
                 self.user_decision,
                 self.review_result_text,
@@ -97,6 +101,8 @@ def _journal_record(row: Dict[str, Any]) -> DecisionRecord:
         position_size=_text(row, "position_size"),
         risk_awareness=_text(row, "risk_awareness"),
         worst_case_plan=_text(row, "worst_case_plan"),
+        favorable_plan=_text(row, "favorable_plan"),
+        sideways_plan=_text(row, "sideways_plan"),
         risk_score=_safe_int(row.get("risk_score")),
         emotion_score=_safe_int(row.get("emotion_score")),
         bias_score=_safe_int(row.get("bias_score")),
@@ -135,6 +141,8 @@ def _legacy_record(row: Dict[str, Any]) -> DecisionRecord:
         position_size="",
         risk_awareness="",
         worst_case_plan="",
+        favorable_plan="",
+        sideways_plan="",
         risk_score=_safe_int(row.get("risk_score")),
         emotion_score=100 if _text(row, "emotion_tag").upper() == "FOMO" else 0,
         bias_score=_safe_int(row.get("behavior_risk_score")),

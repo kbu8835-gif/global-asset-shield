@@ -80,7 +80,14 @@ function analysisScore(draft: NotebookDetail, key: string) {
 }
 
 function planCompletion(draft: NotebookDetail) {
-  const fields = [draft.notes, draft.buy_reason, draft.risk_awareness, draft.worst_case_plan];
+  const fields = [
+    draft.notes,
+    draft.buy_reason,
+    draft.risk_awareness,
+    draft.favorable_plan,
+    draft.sideways_plan,
+    draft.worst_case_plan,
+  ];
   const completed = fields.filter(hasText).length;
   return Math.round((completed / fields.length) * 100);
 }
@@ -90,6 +97,8 @@ function missingPlanItems(draft: NotebookDetail) {
     ["为什么关注它", draft.notes],
     ["交易逻辑", draft.buy_reason],
     ["失效条件", draft.risk_awareness],
+    ["有利情况计划", draft.favorable_plan],
+    ["横盘等待计划", draft.sideways_plan],
     ["亏损退出计划", draft.worst_case_plan],
   ];
   return items.filter(([, value]) => !hasText(value)).map(([label]) => label);
@@ -186,6 +195,8 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
     draft?.notes,
     draft?.buy_reason,
     draft?.risk_awareness,
+    draft?.favorable_plan,
+    draft?.sideways_plan,
     draft?.worst_case_plan,
     draft?.decision,
     draft?.status,
@@ -221,6 +232,8 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
       notes: draft.notes || "",
       buy_reason: draft.buy_reason || "",
       risk_awareness: draft.risk_awareness || "",
+      favorable_plan: draft.favorable_plan || "",
+      sideways_plan: draft.sideways_plan || "",
       worst_case_plan: draft.worst_case_plan || "",
       decision: draft.decision,
       status: draft.status,
@@ -244,6 +257,9 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
       title: `投资笔记 ${new Date().toISOString().slice(0, 10)}`,
       decision: "Wait",
       notes: "我正在考虑这笔交易，还没有下结论。",
+      favorable_plan: "",
+      sideways_plan: "",
+      worst_case_plan: "",
     });
     await loadList();
     await openNotebook(created.id);
@@ -466,12 +482,14 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
                   </div>
                   <div className="text-right text-sm text-slate-400">完整度 {currentCompletion}%</div>
                 </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-4">
+                <div className="mt-4 grid gap-2 md:grid-cols-3">
                     {[
                       ["为什么关注它", draft.notes],
                       ["交易逻辑", draft.buy_reason],
                       ["失效条件", draft.risk_awareness],
-                      ["退出计划", draft.worst_case_plan],
+                      [draft.trade_direction === "short" ? "盈利空单计划" : "盈利处理计划", draft.favorable_plan],
+                      ["横盘计划", draft.sideways_plan],
+                      [draft.trade_direction === "short" ? "亏损止损计划" : "亏损退出计划", draft.worst_case_plan],
                     ].map(([label, value]) => (
                       <div
                         key={String(label)}
@@ -556,8 +574,43 @@ export default function NotebookWorkspace({ onError, focusNotebookId, onNotebook
                   <textarea className={areaClass} value={draft.risk_awareness || ""} onChange={(event) => patchDraft({ risk_awareness: event.target.value })} placeholder="写不出这一条，就不要急着下单。" />
                 </label>
                 <label className="block">
-                  <div className="mb-2 text-sm font-semibold text-white">4. 如果亏损，我怎么退出？</div>
-                  <textarea className={areaClass} value={draft.worst_case_plan || ""} onChange={(event) => patchDraft({ worst_case_plan: event.target.value })} placeholder="例如：下跌/上涨到某个比例、跌破某个条件、情绪上头时先停止交易。" />
+                  <div className="mb-2 text-sm font-semibold text-white">
+                    4. {draft.trade_direction === "short" ? "如果下跌盈利，我怎么处理空单？" : "如果上涨盈利，我怎么处理？"}
+                  </div>
+                  <textarea
+                    className={areaClass}
+                    value={draft.favorable_plan || ""}
+                    onChange={(event) => patchDraft({ favorable_plan: event.target.value })}
+                    placeholder={
+                      draft.trade_direction === "short"
+                        ? "例如：下跌到目标位分批止盈，不临时加空。"
+                        : "例如：上涨后分批止盈，不临时加仓。"
+                    }
+                  />
+                </label>
+                <label className="block">
+                  <div className="mb-2 text-sm font-semibold text-white">5. 如果横盘没有结果，我等多久？</div>
+                  <textarea
+                    className={areaClass}
+                    value={draft.sideways_plan || ""}
+                    onChange={(event) => patchDraft({ sideways_plan: event.target.value })}
+                    placeholder="例如：横盘 3 天没有新证据就重新评估，不因为无聊加仓。"
+                  />
+                </label>
+                <label className="block">
+                  <div className="mb-2 text-sm font-semibold text-white">
+                    6. {draft.trade_direction === "short" ? "如果上涨亏损，我怎么认错？" : "如果下跌亏损，我怎么退出？"}
+                  </div>
+                  <textarea
+                    className={areaClass}
+                    value={draft.worst_case_plan || ""}
+                    onChange={(event) => patchDraft({ worst_case_plan: event.target.value })}
+                    placeholder={
+                      draft.trade_direction === "short"
+                        ? "例如：上涨 8% 止损，突破关键位平空，不补空扛单。"
+                        : "例如：下跌 10% 止损，跌破关键位退出，不补仓证明自己。"
+                    }
+                  />
                 </label>
               </div>
 

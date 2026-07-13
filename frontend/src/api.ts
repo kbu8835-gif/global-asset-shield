@@ -24,6 +24,8 @@ export type ImmuneReportPayload = {
   buy_reason?: string;
   risk_awareness?: string;
   worst_case_plan?: string;
+  favorable_plan?: string;
+  sideways_plan?: string;
   position_size?: string;
   horizon?: string;
 };
@@ -95,6 +97,8 @@ export type NotebookDetail = NotebookListItem & {
   buy_reason?: string | null;
   risk_awareness?: string | null;
   worst_case_plan?: string | null;
+  favorable_plan?: string | null;
+  sideways_plan?: string | null;
   position_size?: string | null;
   notes?: string | null;
   mistakes?: string | null;
@@ -120,6 +124,8 @@ export type NotebookUpdate = Partial<{
   user_text: string;
   risk_awareness: string;
   worst_case_plan: string;
+  favorable_plan: string;
+  sideways_plan: string;
   position_size: string;
   mistakes: string;
   lesson: string;
@@ -363,6 +369,12 @@ export function createNotebook(payload: {
   title?: string;
   decision?: string;
   notes?: string;
+  buy_reason?: string;
+  risk_awareness?: string;
+  favorable_plan?: string;
+  sideways_plan?: string;
+  worst_case_plan?: string;
+  position_size?: string;
 }) {
   return requestJson<NotebookDetail>("/notebook", {
     method: "POST",

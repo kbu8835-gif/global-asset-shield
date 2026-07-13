@@ -35,9 +35,20 @@ def build_ai_coach(entry: Dict[str, Any]) -> str:
     risk_score = _to_int(entry.get("risk_score"))
     position_size = entry.get("position_size") or ""
     worst_case = entry.get("worst_case_plan") or entry.get("notes") or ""
+    favorable_plan = entry.get("favorable_plan") or ""
+    sideways_plan = entry.get("sideways_plan") or ""
     user_text = " ".join(
         str(entry.get(field) or "")
-        for field in ["user_intent", "user_text", "buy_reason", "risk_awareness", "notes", "worst_case_plan"]
+        for field in [
+            "user_intent",
+            "user_text",
+            "buy_reason",
+            "risk_awareness",
+            "notes",
+            "worst_case_plan",
+            "favorable_plan",
+            "sideways_plan",
+        ]
     )
 
     lines = [f"你现在记录的是：{asset}，方向是{direction_text}。"]
@@ -62,7 +73,16 @@ def build_ai_coach(entry: Dict[str, Any]) -> str:
         else:
             lines.append("做多可以，但理由必须能经得起下跌时复盘。")
 
-    lines.append(outcome_rehearsal(direction))
+    if direction == "short":
+        if favorable_plan and sideways_plan and worst_case:
+            lines.append(f"你的三情景计划是：跌了按“{favorable_plan}”处理，横盘按“{sideways_plan}”处理，涨了按“{worst_case}”认错。")
+        else:
+            lines.append("Notebook 里还需要补齐三情景计划：跌了怎么止盈，横盘多久平仓，涨了多少认错。")
+    else:
+        if favorable_plan and sideways_plan and worst_case:
+            lines.append(f"你的三情景计划是：涨了按“{favorable_plan}”处理，横盘按“{sideways_plan}”处理，跌了按“{worst_case}”退出。")
+        else:
+            lines.append("Notebook 里还需要补齐三情景计划：涨了怎么处理，横盘等多久，跌了哪里退出。")
 
     if conviction_score <= 40:
         lines.append(f"当前信念分只有 {conviction_score}，说明这还不像一套完整交易计划。")
@@ -74,6 +94,10 @@ def build_ai_coach(entry: Dict[str, Any]) -> str:
         lines.append("最需要补的一句是：价格到哪里、事实变成什么样，我就承认这笔交易失效。")
     elif len(str(worst_case)) < 12:
         lines.append(f"你的最坏情况计划是“{worst_case}”，还不够可执行，最好写成具体价格、比例或条件。")
+    if favorable_plan and len(str(favorable_plan)) < 8:
+        lines.append(f"你的有利情况计划是“{favorable_plan}”，还不够具体，最好写清楚分批止盈、继续持有或移动止损条件。")
+    if sideways_plan and len(str(sideways_plan)) < 8:
+        lines.append(f"你的横盘计划是“{sideways_plan}”，还不够具体，最好写清楚最长等待时间和重新评估条件。")
 
     decision_reason = report.get("decision_reason")
     if decision_reason:

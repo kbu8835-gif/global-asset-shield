@@ -66,6 +66,8 @@ class ImmuneReportRequest(BaseModel):
     buy_reason: Optional[str] = None
     risk_awareness: Optional[str] = None
     worst_case_plan: Optional[str] = None
+    favorable_plan: Optional[str] = None
+    sideways_plan: Optional[str] = None
     position_size: Optional[str] = None
     horizon: Optional[str] = None
 
@@ -106,6 +108,8 @@ class JournalEntry(BaseModel):
     position_size: Optional[str] = None
     risk_awareness: Optional[str] = None
     worst_case_plan: Optional[str] = None
+    favorable_plan: Optional[str] = None
+    sideways_plan: Optional[str] = None
     risk_score: int
     emotion_score: int
     bias_score: int
@@ -376,6 +380,8 @@ class NotebookCreate(BaseModel):
     buy_reason: Optional[str] = ""
     risk_awareness: Optional[str] = ""
     worst_case_plan: Optional[str] = ""
+    favorable_plan: Optional[str] = ""
+    sideways_plan: Optional[str] = ""
     position_size: Optional[str] = ""
 
 
@@ -391,6 +397,8 @@ class NotebookUpdate(BaseModel):
     user_text: Optional[str] = None
     risk_awareness: Optional[str] = None
     worst_case_plan: Optional[str] = None
+    favorable_plan: Optional[str] = None
+    sideways_plan: Optional[str] = None
     position_size: Optional[str] = None
     trade_direction: Optional[str] = None
     mistakes: Optional[str] = None
@@ -426,6 +434,8 @@ class NotebookDetail(NotebookListItem):
     buy_reason: Optional[str] = None
     risk_awareness: Optional[str] = None
     worst_case_plan: Optional[str] = None
+    favorable_plan: Optional[str] = None
+    sideways_plan: Optional[str] = None
     position_size: Optional[str] = None
     notes: Optional[str] = None
     mistakes: Optional[str] = None
