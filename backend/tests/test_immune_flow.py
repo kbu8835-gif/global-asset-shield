@@ -20,6 +20,42 @@ def test_health_returns_v1_beta():
     assert response.json()["concept"] == "AI Investment Immune System"
 
 
+def test_immune_report_empty_payload_returns_usage_guide():
+    response = client.post("/immune/report", json={})
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["status"] == "needs_user_input"
+    assert data["okx_ai_agent_result"]["recommended_display_field"] == "okx_ai_agent_result.display_markdown"
+    assert "我想买 PEPE" in data["okx_ai_agent_result"]["display_markdown"]
+
+
+def test_immune_report_parses_natural_language_query(monkeypatch):
+    monkeypatch.setattr(
+        "immune.risk.scan_crypto",
+        lambda asset: {
+            "risk_score": 45,
+            "risk_level": "中风险",
+            "risk_reasons": ["mock"],
+            "raw_data": {"asset": asset},
+        },
+    )
+
+    response = client.post(
+        "/immune/report",
+        json={"query": "我想买 PEPE，看到 KOL 推荐，准备 50% 仓位，跌 10% 止损。"},
+    )
+    data = response.json()
+
+    assert response.status_code == 200
+    assert data["asset"] == "PEPE"
+    assert data["asset_type"] == "crypto"
+    assert data["trade_direction"] == "long"
+    assert data["okx_ai_agent_result"]["mini_notebook"]["what_user_wrote"]["position_size"] == "50%"
+    assert any("KOL" in item for item in data["emotion_scan"]["detected_emotions"])
+    assert data["final_decision"]
+
+
 def test_immune_report_fomo_saves_journal(monkeypatch):
     monkeypatch.setattr(
         "immune.risk.scan_crypto",

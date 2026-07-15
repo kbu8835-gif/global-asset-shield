@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from typing import Any
+
+from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import APP_CONCEPT, APP_DESCRIPTION, APP_NAME, APP_VERSION, CORS_ORIGINS
@@ -27,6 +29,7 @@ from immune.kol_intelligence import (
     update_kol_profile,
 )
 from immune.notebook import create_notebook, delete_notebook, get_notebook, list_notebooks, review_notebook, update_notebook
+from immune.natural_language import build_report_usage_guide, build_request_from_loose_payload
 from immune.orchestrator import build_immune_report
 from immune.review import review_journal
 from journal import (
@@ -143,8 +146,11 @@ def auth_logout():
 
 
 @app.post("/immune/report")
-def immune_report(payload: ImmuneReportRequest, user: UserPublic = Depends(get_current_user_or_demo)):
-    return build_immune_report(payload, user.id)
+def immune_report(payload: Any = Body(default_factory=dict), user: UserPublic = Depends(get_current_user_or_demo)):
+    parsed = build_request_from_loose_payload(payload)
+    if parsed is None:
+        return build_report_usage_guide()
+    return build_immune_report(parsed, user.id)
 
 
 @app.get("/journal")
