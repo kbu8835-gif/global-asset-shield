@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from config import DEXSCREENER_SEARCH_URL, DEXSCREENER_TOKEN_URL, MEME_TOKENS
-from scanner.okx_onchain import fetch_okx_onchain_token
+from scanner.okx_onchain import fetch_okx_onchain_token, fetch_okx_public_ticker
 from scanner.utils import clamp_score, risk_level
 from schemas import RiskScan
 
@@ -307,9 +307,14 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
         raw_data["external_market_data_source"] = okx_data.get("source")
     else:
         try:
-            okx_data = fetch_okx_onchain_token(token)
+            okx_data = fetch_okx_public_ticker(token)
         except Exception as exc:
-            raw_data["okx_onchain_error"] = exc.__class__.__name__
+            raw_data["okx_public_market_error"] = exc.__class__.__name__
+        if not okx_data:
+            try:
+                okx_data = fetch_okx_onchain_token(token)
+            except Exception as exc:
+                raw_data["okx_onchain_error"] = exc.__class__.__name__
 
     if okx_data:
         symbol = okx_data.get("symbol") or token.upper()
@@ -332,6 +337,8 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
                 "pair_url": okx_data.get("pair_url"),
                 "fallback_mock": False,
                 "primary_data_source": okx_data.get("primary_data_source") or "okx_onchainos",
+                "is_cex_market_data": bool(okx_data.get("is_cex_market_data")),
+                "inst_id": okx_data.get("inst_id"),
             }
         )
         raw_data["okx_onchain"] = okx_data
@@ -345,12 +352,19 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
         okx_market_cap = okx_data.get("market_cap")
         okx_volume = okx_data.get("volume24h")
         okx_holders = okx_data.get("holders")
-        okx_liquidity_text = f"${okx_liquidity:,.0f}" if okx_liquidity is not None else "未知"
+        is_cex_market_data = bool(okx_data.get("is_cex_market_data"))
+        okx_liquidity_text = f"${okx_liquidity:,.0f}" if okx_liquidity is not None else "不适用"
         if raw_data.get("external_market_data_used"):
             reasons.append(
                 "已使用调用方 Agent 传入的 OKX 链上行情作为第一数据源："
                 f"价格 ${okx_price if okx_price is not None else '未知'}，"
                 f"流动性约 {okx_liquidity_text}"
+            )
+        elif is_cex_market_data:
+            reasons.append(
+                "已直接使用 OKX 公共现货行情作为第一数据源："
+                f"{okx_data.get('inst_id') or symbol} 价格 ${okx_price if okx_price is not None else '未知'}，"
+                f"24h 成交量 {('$' + format(okx_volume, ',.0f')) if okx_volume is not None else '未知'}"
             )
         else:
             reasons.append(
@@ -359,11 +373,16 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
                 f"流动性约 {okx_liquidity_text}"
             )
         if okx_market_cap is not None or okx_volume is not None or okx_holders is not None:
-            reasons.append(
-                f"OKX 链上概览：市值 {('$' + format(okx_market_cap, ',.0f')) if okx_market_cap is not None else '未知'}，"
-                f"24h 成交量 {('$' + format(okx_volume, ',.0f')) if okx_volume is not None else '未知'}，"
-                f"持有人 {format(okx_holders, ',.0f') if okx_holders is not None else '未知'}"
-            )
+            if is_cex_market_data:
+                reasons.append(
+                    "OKX 公共行情用于解决主流币价格准确性；链上持仓、蜜罐和 owner 权限不适用于 BTC 这类现货报价。"
+                )
+            else:
+                reasons.append(
+                    f"OKX 链上概览：市值 {('$' + format(okx_market_cap, ',.0f')) if okx_market_cap is not None else '未知'}，"
+                    f"24h 成交量 {('$' + format(okx_volume, ',.0f')) if okx_volume is not None else '未知'}，"
+                    f"持有人 {format(okx_holders, ',.0f') if okx_holders is not None else '未知'}"
+                )
         score = _apply_okx_onchain_risk(score, reasons, okx_data)
     else:
         try:
@@ -409,10 +428,12 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
                 f"DexScreener 已读取 {symbol}：价格 ${raw_data['price_usd']}，流动性约 ${liquidity:,.0f}，FDV 约 ${fdv:,.0f}，24h 成交量约 ${volume24h:,.0f}"
             )
 
-    if liquidity < 50_000:
+    is_cex_market_data = bool(raw_data.get("is_cex_market_data"))
+
+    if not is_cex_market_data and liquidity < 50_000:
         score += 30
         reasons.append("流动性低于 50,000 美元，价格可能被少量资金推拉")
-    if fdv > 100_000_000 and liquidity < 500_000:
+    if not is_cex_market_data and fdv > 100_000_000 and liquidity < 500_000:
         score += 25
         reasons.append("FDV 超过 1 亿美元但流动性不足，估值叙事和退出深度不匹配")
     if volume24h < 10_000:
@@ -420,7 +441,11 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
         reasons.append("24 小时成交量低于 10,000 美元，成交质量偏弱")
 
     external_security_summary = raw_data.get("okx_security_summary") if raw_data.get("external_market_data_used") else None
-    if external_security_summary:
+    if is_cex_market_data:
+        security = None
+        security_summary = None
+        raw_data["security_source"] = "not_applicable_for_okx_spot"
+    elif external_security_summary:
         security = None
         security_summary = external_security_summary
         raw_data["security_source"] = "OKX Onchain OS Agent"
@@ -434,7 +459,9 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
         security_summary = _security_summary(security) if security else None
     raw_data["goplus_security"] = security
     raw_data["security_summary"] = security_summary
-    if external_security_summary:
+    if is_cex_market_data:
+        reasons.append("OKX 现货行情不按合约代币处理，GoPlus 蜜罐/owner 权限扫描不适用")
+    elif external_security_summary:
         reasons.append("已使用调用方 Agent 传入的 OKX 合约安全数据")
     elif security is None:
         score += 10

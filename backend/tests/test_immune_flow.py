@@ -27,6 +27,10 @@ def test_immune_report_empty_payload_returns_usage_guide():
     assert response.status_code == 200
     assert data["status"] == "needs_user_input"
     assert data["okx_ai_agent_result"]["recommended_display_field"] == "okx_ai_agent_result.display_markdown"
+    assert data["okx_agent_protocol"]["pre_call_required"] is True
+    assert "external_market_data" in data["message"]
+    assert "先用 OKX 查询" in data["okx_ai_agent_result"]["caller_instruction"]
+    assert "给 OKX Agent 的调用协议" in data["okx_ai_agent_result"]["display_markdown"]
     assert "我想买 PEPE" in data["okx_ai_agent_result"]["display_markdown"]
 
 

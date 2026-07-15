@@ -5,6 +5,7 @@ def test_crypto_scanner_external_failure_fallback(monkeypatch):
     def fail(_token):
         raise RuntimeError("network down")
 
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: None)
     monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)
     monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", fail)
     result = scan_crypto("PEPE")
@@ -15,6 +16,7 @@ def test_crypto_scanner_external_failure_fallback(monkeypatch):
 
 
 def test_crypto_scanner_goplus_security_flags(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: None)
     monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)
     monkeypatch.setattr(
         "scanner.crypto.fetch_dexscreener_pair",
@@ -50,6 +52,7 @@ def test_crypto_scanner_goplus_security_flags(monkeypatch):
 
 
 def test_crypto_scanner_okx_onchain_enrichment(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: None)
     monkeypatch.setattr(
         "scanner.crypto.fetch_dexscreener_pair",
         lambda _token: {
@@ -90,6 +93,7 @@ def test_crypto_scanner_okx_onchain_enrichment(monkeypatch):
 
 
 def test_crypto_scanner_uses_external_okx_agent_data(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call public ticker")))
     monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
     monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call dexscreener")))
     monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
@@ -130,6 +134,7 @@ def test_crypto_scanner_uses_external_okx_agent_data(monkeypatch):
 
 
 def test_crypto_scanner_scores_external_okx_security_risks(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: None)
     monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)
     monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))
     monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
@@ -167,3 +172,33 @@ def test_crypto_scanner_scores_external_okx_security_risks(monkeypatch):
     assert "买卖税偏高" in reasons
     assert "流动性下降" in reasons
     assert "池子深度" in reasons
+
+
+def test_crypto_scanner_uses_okx_public_market_for_major_symbols(monkeypatch):
+    monkeypatch.setattr(
+        "scanner.crypto.fetch_okx_public_ticker",
+        lambda _token: {
+            "source": "okx_public_market",
+            "symbol": "BTC",
+            "name": "BTC OKX Spot",
+            "price_usd": 65_432.1,
+            "volume24h": 18_000_000_000,
+            "pair_url": "https://www.okx.com/trade-spot/btc-usdt",
+            "primary_data_source": "okx_public_market",
+            "is_cex_market_data": True,
+            "inst_id": "BTC-USDT",
+        },
+    )
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call dexscreener")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: (_ for _ in ()).throw(RuntimeError("should not call goplus")))
+
+    result = scan_crypto("BTC")
+    reasons = " ".join(result.risk_reasons)
+
+    assert result.raw_data["primary_data_source"] == "okx_public_market"
+    assert result.raw_data["price_usd"] == 65_432.1
+    assert result.raw_data["security_source"] == "not_applicable_for_okx_spot"
+    assert "已直接使用 OKX 公共现货行情" in reasons
+    assert "流动性低于 50,000" not in reasons
+    assert "没有 GoPlus 安全数据" not in reasons

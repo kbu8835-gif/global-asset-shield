@@ -29,8 +29,16 @@ def _field_status(raw: Dict[str, Any], mapping: List[tuple[str, str]]) -> tuple[
 def build_data_confidence(asset_type: str, risk_scan: Dict[str, Any]) -> Dict[str, Any]:
     raw = risk_scan.get("raw_data") or {}
     asset_type = (asset_type or "").lower()
+    is_okx_public_spot = bool(raw.get("is_cex_market_data")) or raw.get("primary_data_source") == "okx_public_market"
 
-    if asset_type == "crypto":
+    if asset_type == "crypto" and is_okx_public_spot:
+        fields = [
+            ("price_usd", "OKX 现货价格"),
+            ("volume24h", "OKX 24h 成交量"),
+            ("pair_url", "OKX 交易页面"),
+        ]
+        base_summary = "OKX 公共行情提供主流币现货价格和成交量。BTC/ETH 这类现货报价不按合约代币处理。"
+    elif asset_type == "crypto":
         fields = [
             ("price_usd", "实时价格"),
             ("liquidity", "流动性"),
@@ -78,7 +86,7 @@ def build_data_confidence(asset_type: str, risk_scan: Dict[str, Any]) -> Dict[st
     if raw.get("partial_data"):
         score -= 15
         warnings.append("当前数据源只提供轻量行情，部分估值或基本面字段缺失。")
-    if asset_type == "crypto" and not raw.get("security_summary"):
+    if asset_type == "crypto" and not is_okx_public_spot and not raw.get("security_summary"):
         score -= 15
         warnings.append("缺少 GoPlus 合约安全数据，蜜罐、黑名单、owner 权限等风险未知。")
 

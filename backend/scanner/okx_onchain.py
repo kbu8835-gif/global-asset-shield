@@ -3,6 +3,8 @@ import shutil
 import subprocess
 from typing import Any, Dict, List, Optional
 
+import requests
+
 
 CHAIN_ID_TO_NAME = {
     "1": "ethereum",
@@ -11,6 +13,25 @@ CHAIN_ID_TO_NAME = {
     "8453": "base",
     "137": "polygon",
     "42161": "arbitrum",
+}
+
+OKX_PUBLIC_SPOT_SYMBOLS = {
+    "BTC": "BTC-USDT",
+    "ETH": "ETH-USDT",
+    "SOL": "SOL-USDT",
+    "XRP": "XRP-USDT",
+    "DOGE": "DOGE-USDT",
+    "ADA": "ADA-USDT",
+    "AVAX": "AVAX-USDT",
+    "LINK": "LINK-USDT",
+    "BNB": "BNB-USDT",
+    "TRX": "TRX-USDT",
+    "LTC": "LTC-USDT",
+    "BCH": "BCH-USDT",
+    "DOT": "DOT-USDT",
+    "UNI": "UNI-USDT",
+    "OP": "OP-USDT",
+    "ARB": "ARB-USDT",
 }
 
 
@@ -75,6 +96,59 @@ def _to_float(value: Any) -> Optional[float]:
         return float(str(value).replace(",", ""))
     except (TypeError, ValueError):
         return None
+
+
+def fetch_okx_public_ticker(token: str, timeout: int = 8) -> Optional[Dict[str, Any]]:
+    """Fetch free OKX spot ticker for crypto assets listed on OKX.
+
+    This is intentionally separate from OnchainOS. It does not require a wallet,
+    login, or local CLI, so Render can use it as the first source for listed
+    assets such as BTC, ETH, SOL, and PEPE.
+    """
+    symbol = token.strip().upper()
+    if not symbol or symbol.startswith("0X") or any(char in symbol for char in "/:_ "):
+        return None
+    inst_id = OKX_PUBLIC_SPOT_SYMBOLS.get(symbol) or f"{symbol}-USDT"
+
+    response = requests.get(
+        "https://www.okx.com/api/v5/market/ticker",
+        params={"instId": inst_id},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if str(payload.get("code")) != "0":
+        return None
+    rows = payload.get("data") or []
+    if not rows:
+        return None
+    ticker = rows[0]
+    price = _to_float(ticker.get("last"))
+    if price is None:
+        return None
+    volume_ccy = _to_float(ticker.get("volCcy24h"))
+    volume_base = _to_float(ticker.get("vol24h"))
+    open_24h = _to_float(ticker.get("open24h"))
+    price_change_24h = round((price - open_24h) / open_24h * 100, 4) if open_24h else None
+
+    return {
+        "source": "okx_public_market",
+        "symbol": symbol,
+        "name": f"{symbol} OKX Spot",
+        "contract_address": None,
+        "chain": None,
+        "price_usd": price,
+        "market_cap": None,
+        "liquidity": None,
+        "volume24h": volume_ccy if volume_ccy is not None else volume_base,
+        "holders": None,
+        "pair_url": f"https://www.okx.com/trade-spot/{inst_id.lower()}",
+        "primary_data_source": "okx_public_market",
+        "is_cex_market_data": True,
+        "inst_id": inst_id,
+        "price_change_24h": price_change_24h,
+        "raw_ticker": ticker,
+    }
 
 
 def _choose_best_token(items: List[Dict[str, Any]], token: str) -> Optional[Dict[str, Any]]:
