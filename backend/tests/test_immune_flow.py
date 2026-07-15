@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app import app
+from immune.natural_language import build_request_from_loose_payload
 
 
 client = TestClient(app)
@@ -63,6 +64,42 @@ def test_immune_report_parses_natural_language_query(monkeypatch):
     assert next_action["action"] == "query_okx_market_data_and_retry"
     assert "external_market_data" in next_action["message"]
     assert "OKX Agent 下一步" in data["okx_ai_agent_result"]["display_markdown"]
+
+
+def test_natural_language_parser_understands_common_trade_phrases():
+    payload = build_request_from_loose_payload(
+        {
+            "query": "我想做多 BTC，担心追高，准备小仓位，涨20%减仓，横盘3天重新评估，跌破关键位置就退出。"
+        }
+    )
+
+    assert payload is not None
+    assert payload.asset == "BTC"
+    assert payload.asset_type == "crypto"
+    assert payload.trade_direction == "long"
+    assert payload.position_size == "5%"
+    assert payload.worst_case_plan == "跌破关键位置就退出"
+    assert payload.favorable_plan == "上涨 20% 就减仓"
+    assert payload.sideways_plan == "横盘 3 天后重新评估"
+    assert "担心追高" in payload.risk_awareness
+
+
+def test_natural_language_parser_understands_short_trade_phrases():
+    payload = build_request_from_loose_payload(
+        {
+            "query": "我想做空 NVDA，觉得估值太贵，准备三成仓，下跌15%止盈，横盘一周平仓，反弹8%就止损。"
+        }
+    )
+
+    assert payload is not None
+    assert payload.asset == "NVDA"
+    assert payload.asset_type == "stock"
+    assert payload.trade_direction == "short"
+    assert payload.position_size == "30%"
+    assert payload.worst_case_plan == "上涨 8% 就止损"
+    assert payload.favorable_plan == "下跌 15% 就止盈"
+    assert payload.sideways_plan == "横盘 一 周后重新评估"
+    assert "估值太贵" in payload.risk_awareness
 
 
 def test_immune_report_fomo_saves_journal(monkeypatch):
