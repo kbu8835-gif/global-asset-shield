@@ -58,6 +58,11 @@ def test_immune_report_parses_natural_language_query(monkeypatch):
     assert data["okx_ai_agent_result"]["mini_notebook"]["what_user_wrote"]["position_size"] == "50%"
     assert any("KOL" in item for item in data["emotion_scan"]["detected_emotions"])
     assert data["final_decision"]
+    next_action = data["okx_ai_agent_result"]["okx_agent_next_action"]
+    assert next_action["required"] is True
+    assert next_action["action"] == "query_okx_market_data_and_retry"
+    assert "external_market_data" in next_action["message"]
+    assert "OKX Agent 下一步" in data["okx_ai_agent_result"]["display_markdown"]
 
 
 def test_immune_report_fomo_saves_journal(monkeypatch):
@@ -380,6 +385,7 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
     assert response.status_code == 200
     assert data["risk_scan"]["raw_data"]["primary_data_source"] == "external_okx_agent"
     assert data["risk_scan"]["raw_data"]["external_market_data_used"] is True
+    assert data["okx_ai_agent_result"]["okx_agent_next_action"]["required"] is False
     assert data["risk_scan"]["raw_data"]["security_source"] == "OKX Onchain OS Agent"
     assert "调用方 Agent 传入的 OKX 链上行情" in " ".join(data["risk_scan"]["risk_reasons"])
     assert "OKX 合约安全数据" in " ".join(data["risk_scan"]["risk_reasons"])

@@ -121,12 +121,20 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
     source_lower = source.lower()
     primary_source = "external_okx_agent" if "okx" in source_lower or "onchain" in source_lower else "external_market_data"
 
-    risk_value = _first_value(data, "risk_control_level", "risk_level", "riskLevel")
-    top10_value = _first_value(data, "top10_hold_percent", "top10HolderPercent", "top_10_holders_percent")
-    dev_value = _first_value(data, "dev_holding_percent", "devHoldingPercent", "developer_holding_percent")
-    bundle_value = _first_value(data, "bundle_holding_percent", "bundleHoldingPercent")
-    suspicious_value = _first_value(data, "suspicious_holding_percent", "suspiciousHoldingPercent")
-    holders_value = _first_value(data, "holders", "holder_count", "holderCount")
+    risk_value = _first_value(data, "risk_control_level", "riskLevelControl", "risk_level", "riskLevel", "risk")
+    top10_value = _first_value(
+        data,
+        "top10_hold_percent",
+        "top10HoldPercent",
+        "top10HolderPercent",
+        "top_10_holders_percent",
+        "top10HolderRatio",
+        "top10_holding_ratio",
+    )
+    dev_value = _first_value(data, "dev_holding_percent", "devHoldingPercent", "developer_holding_percent", "devHoldPercent")
+    bundle_value = _first_value(data, "bundle_holding_percent", "bundleHoldingPercent", "bundleHoldPercent")
+    suspicious_value = _first_value(data, "suspicious_holding_percent", "suspiciousHoldingPercent", "suspiciousHoldPercent")
+    holders_value = _first_value(data, "holders", "holder_count", "holderCount", "holdersCount", "holder")
     liquidity_change_value = _first_value(
         data,
         "liquidity_change_24h",
@@ -134,7 +142,7 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "liquidity_change_percent_24h",
         "liquidityChangePercent24h",
     )
-    pool_depth_value = _first_value(data, "pool_depth_usd", "poolDepthUsd", "pool_depth", "depth_usd")
+    pool_depth_value = _first_value(data, "pool_depth_usd", "poolDepthUsd", "pool_depth", "depth_usd", "depthUsd")
     pair_url = _first_value(
         data,
         "pair_url",
@@ -196,10 +204,12 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "contract_address": _first_value(data, "contract_address", "address", "token_address", "contractAddress")
         or (token if token.startswith("0x") else None),
         "chain": _first_value(data, "chain", "chain_id", "chainId", "network"),
-        "price_usd": _first_value(data, "price_usd", "priceUsd", "price"),
-        "market_cap": _to_float(_first_value(data, "market_cap", "marketCap", "fdv")),
-        "liquidity": _to_float(_first_value(data, "liquidity", "liquidity_usd", "liquidityUsd")),
-        "volume24h": _to_float(_first_value(data, "volume24h", "volume_24h", "volume24H", "volume", "h24_volume")),
+        "price_usd": _first_value(data, "price_usd", "priceUsd", "price", "lastPrice", "last", "markPrice"),
+        "market_cap": _to_float(_first_value(data, "market_cap", "marketCap", "fdv", "mcap", "marketValue")),
+        "liquidity": _to_float(_first_value(data, "liquidity", "liquidity_usd", "liquidityUsd", "liquidityUSD")),
+        "volume24h": _to_float(
+            _first_value(data, "volume24h", "volume_24h", "volume24H", "volume24hUsd", "volumeUsd24h", "volume", "h24_volume")
+        ),
         "pair_url": pair_url,
         "holders": _to_float(holders_value) if holders_value is not None else None,
         "risk_control_level": _to_float(risk_value, -1) if risk_value is not None else None,

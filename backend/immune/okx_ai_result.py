@@ -170,6 +170,55 @@ def _build_okx_security_scan(report: Dict[str, Any]) -> Dict[str, Any] | None:
     }
 
 
+def _build_okx_agent_next_action(payload: ImmuneReportRequest, report: Dict[str, Any]) -> Dict[str, Any]:
+    raw = report.get("risk_scan", {}).get("raw_data") or {}
+    used_external = bool(raw.get("external_market_data_used"))
+    asset = report.get("asset") or payload.asset
+    asset_type = report.get("asset_type") or payload.asset_type
+    if used_external:
+        return {
+            "required": False,
+            "action": "none",
+            "message": "已收到调用方 Agent 传入的 external_market_data，本次报告已优先使用外部 OKX 数据。",
+        }
+    if asset_type == "crypto":
+        data_request = "价格、24h 成交量、流动性、市值/FDV、持有人、Top10 持仓、风险等级、合约安全、交易池链接"
+        okx_tool_hint = "OKX Market / DEX / OnchainOS"
+    elif asset_type == "stock":
+        data_request = "价格、涨跌幅、成交量、市值、PE、营收增长、利润率、负债、分析师共识"
+        okx_tool_hint = "OKX Market"
+    else:
+        data_request = "最新价格、成交量、市值、估值、风险字段和可验证链接"
+        okx_tool_hint = "OKX Market"
+    return {
+        "required": True,
+        "action": "query_okx_market_data_and_retry",
+        "message": f"为了提高数据质量，请先用 {okx_tool_hint} 查询 {asset} 的最新数据，再把结果作为 external_market_data 重新调用 /immune/report。",
+        "asset": asset,
+        "asset_type": asset_type,
+        "requested_fields": data_request,
+        "retry_payload_hint": {
+            "asset": asset,
+            "asset_type": asset_type,
+            "trade_direction": payload.trade_direction,
+            "user_text": payload.user_text,
+            "buy_reason": payload.buy_reason,
+            "position_size": payload.position_size,
+            "risk_awareness": payload.risk_awareness,
+            "worst_case_plan": payload.worst_case_plan,
+            "external_market_data": {
+                "source": "OKX Market Agent",
+                "symbol": asset,
+                "price": "...",
+                "volume24h": "...",
+                "market_cap": "...",
+                "liquidity": "...",
+                "pair_url": "https://www.okx.com/...",
+            },
+        },
+    }
+
+
 def _format_okx_security_markdown(security_scan: Dict[str, Any] | None) -> List[str]:
     if not security_scan:
         return []
@@ -204,6 +253,12 @@ def _build_display_markdown(
     emotions = _items(behavior.get("detected_emotions"))[:4]
     biases = _items(behavior.get("top_biases"))[:3]
     security_section = _format_okx_security_markdown(result.get("okx_security_scan"))
+    next_action = result.get("okx_agent_next_action") or {}
+    okx_retry_line = (
+        f"- OKX Agent 下一步：{next_action.get('message')}"
+        if next_action.get("required")
+        else ""
+    )
 
     return "\n".join(
         [
@@ -213,6 +268,7 @@ def _build_display_markdown(
             "",
             "## 市场数据",
             f"- {result.get('market_snapshot')}",
+            okx_retry_line,
             f"- 查看交易池/合约：{result.get('market_link')}" if result.get("market_link") else "",
             f"- 数据置信度：{confidence.get('score')} / {confidence.get('level')}",
             f"- 数据提示：{confidence.get('summary')}",
@@ -254,6 +310,7 @@ def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, An
     history = report.get("historical_dna_scan") or {}
     kol_scan = report.get("kol_risk_scan") or {}
     okx_security_scan = _build_okx_security_scan(report)
+    okx_agent_next_action = _build_okx_agent_next_action(payload, report)
 
     must_answer = report.get("devil_advocate", {}).get("killer_questions") or []
     if not must_answer:
@@ -287,6 +344,7 @@ def build_okx_ai_agent_result(payload: ImmuneReportRequest, report: Dict[str, An
             "summary": confidence.get("summary"),
         },
         "okx_security_scan": okx_security_scan,
+        "okx_agent_next_action": okx_agent_next_action,
         "top_risks": risk_reasons,
         "behavior_scan": {
             "emotion_score": report.get("emotion_scan", {}).get("emotion_score"),

@@ -133,6 +133,38 @@ def test_crypto_scanner_uses_external_okx_agent_data(monkeypatch):
     assert any("OKX 合约安全数据" in reason for reason in result.risk_reasons)
 
 
+def test_crypto_scanner_accepts_loose_okx_external_field_names(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call public ticker")))
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call dexscreener")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
+
+    result = scan_crypto(
+        "PEPE",
+        external_market_data={
+            "provider": "OKX DEX Agent",
+            "tokenSymbol": "PEPE",
+            "lastPrice": 0.0000027,
+            "marketValue": 1_100_000_000,
+            "liquidityUSD": 20_000_000,
+            "volumeUsd24h": 700_000,
+            "holderCount": 560_000,
+            "riskLevelControl": 2,
+            "top10HolderRatio": 8.5,
+            "poolUrl": "https://www.okx.com/web3/dex/pepe",
+        },
+    )
+
+    assert result.raw_data["primary_data_source"] == "external_okx_agent"
+    assert result.raw_data["price_usd"] == 0.0000027
+    assert result.raw_data["fdv"] == 1_100_000_000
+    assert result.raw_data["liquidity"] == 20_000_000
+    assert result.raw_data["volume24h"] == 700_000
+    assert result.raw_data["okx_onchain"]["holders"] == 560_000
+    assert result.raw_data["okx_onchain"]["top10_hold_percent"] == 8.5
+    assert result.raw_data["pair_url"] == "https://www.okx.com/web3/dex/pepe"
+
+
 def test_crypto_scanner_scores_external_okx_security_risks(monkeypatch):
     monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: None)
     monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: None)

@@ -42,13 +42,23 @@ def _normalize_external_stock_data(symbol: str, external_market_data: Optional[D
 
     normalized = {
         "symbol": str(_first_value(data, "symbol", "ticker", "asset") or symbol).upper(),
-        "price": _safe_float(_first_value(data, "price", "last_price", "lastPrice", "regularMarketPrice", "current_price")),
-        "market_cap": _safe_float(_first_value(data, "market_cap", "marketCap", "mktCap")),
-        "day_change_percent": _normalize_percent(
-            _first_value(data, "day_change_percent", "change_percent", "changePercent", "regularMarketChangePercent")
+        "price": _safe_float(
+            _first_value(data, "price", "last_price", "lastPrice", "last", "markPrice", "regularMarketPrice", "current_price")
         ),
-        "volume": _safe_float(_first_value(data, "volume", "regularMarketVolume", "day_volume")),
-        "average_volume": _safe_float(_first_value(data, "average_volume", "avgVolume", "averageVolume")),
+        "market_cap": _safe_float(_first_value(data, "market_cap", "marketCap", "mktCap", "marketValue")),
+        "day_change_percent": _normalize_percent(
+            _first_value(
+                data,
+                "day_change_percent",
+                "change_percent",
+                "changePercent",
+                "change24hPercent",
+                "priceChangePercent",
+                "regularMarketChangePercent",
+            )
+        ),
+        "volume": _safe_float(_first_value(data, "volume", "volume24h", "regularMarketVolume", "day_volume")),
+        "average_volume": _safe_float(_first_value(data, "average_volume", "avgVolume", "averageVolume", "avg_volume")),
         "pe": _safe_float(_first_value(data, "pe", "trailingPE", "forwardPE", "pe_ratio", "peRatio")),
         "revenue_growth": _normalize_percent(_first_value(data, "revenue_growth", "revenueGrowth")),
         "profit_margin": _normalize_percent(_first_value(data, "profit_margin", "profitMargins", "net_margin")),
