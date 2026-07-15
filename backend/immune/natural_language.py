@@ -23,27 +23,49 @@ NUMBER_WORDS = {
 
 
 def build_report_usage_guide() -> Dict[str, Any]:
+    usage_instruction = "\n".join(
+        [
+            "OKX.AI 推荐调用模板",
+            "",
+            "请只复制下面【可复制模板】这一块。",
+            "把【这里改成你的交易想法】替换成你自己的内容，其他内容不用变。",
+            "改好后直接粘贴发给当前 Agent。",
+        ]
+    )
+    second_step_template = "\n".join(
+        [
+            "我的交易想法是：",
+            "【这里改成你的交易想法，例如：我想买 PEPE，看到 KOL 推荐，准备 50% 仓位，跌 10% 止损。】",
+            "",
+            "调用本服务前，请先使用 OKX Market / DEX / OnchainOS 查询该资产最新行情、链上数据、安全数据或美股市场数据，并将结果作为 external_market_data 或 okx_market_data 传入接口。服务返回后请优先展示 okx_ai_agent_result.display_markdown。",
+        ]
+    )
+    example_lines = [
+        "做多 Crypto：我想买 PEPE，看到 KOL 推荐，准备 50% 仓位，跌 10% 止损。",
+        "做空 Crypto：我想做空 ETH，现在是下跌趋势，准备 30% 仓位，上涨 8% 止损，跌 10% 止盈。",
+        "美股：我想做多 NVDA，觉得 AI 芯片增长强，但担心估值太高，准备 10% 仓位，跌破计划就止损。",
+    ]
     display_markdown = "\n".join(
         [
             "# Global Asset Shield 已准备好",
             "",
-            "## 给 OKX Agent 的调用协议",
-            "在正式调用投资免疫扫描前，请先用 OKX 查询目标资产的最新市场数据。",
+            "## 你现在只需要做一件事",
+            usage_instruction,
             "",
-            "调用顺序：",
+            "## 可复制模板",
+            "```text",
+            second_step_template,
+            "```",
+            "",
+            "## 交易想法可以这样写",
+            *[f"- {line}" for line in example_lines],
+            "",
+            "## 接下来 Agent 会做什么",
             "1. 先询问用户一句交易想法。",
             "2. 从交易想法里识别资产、资产类型和方向。",
             "3. 使用 OKX 市场 / DEX / OnchainOS 能力查询该资产最新数据。",
-            "4. 将 OKX 查询结果作为 `external_market_data` 传给本接口。",
+            "4. 将 OKX 查询结果作为 `external_market_data` 或 `okx_market_data` 传给本接口。",
             "5. 最终优先展示 `okx_ai_agent_result.display_markdown`。",
-            "",
-            "请用一句话告诉我你的交易想法，例如：",
-            "",
-            "“我想买 PEPE，看到 KOL 推荐，准备 50% 仓位，跌 10% 止损。”",
-            "",
-            "或者：",
-            "",
-            "“我想做空 NVDA，觉得涨太多了，仓位 10%，上涨 8% 就止损。”",
             "",
             "我会帮你检测：",
             "- OKX 市场数据",
@@ -58,7 +80,10 @@ def build_report_usage_guide() -> Dict[str, Any]:
     return {
         "status": "needs_user_input",
         "service_name": "Investment Immune Scan",
-        "message": "请补充一句你的交易想法。调用方 Agent 应先查询 OKX 市场数据，并作为 external_market_data 传入本接口。",
+        "message": "请补充一句你的交易想法。建议复制 okx_ai_agent_result.display_markdown 里的推荐调用模板，只替换交易想法。",
+        "usage_instruction": usage_instruction,
+        "next_user_template": second_step_template,
+        "trade_idea_examples": example_lines,
         "okx_agent_protocol": {
             "role": "caller_instruction",
             "pre_call_required": True,
@@ -89,7 +114,8 @@ def build_report_usage_guide() -> Dict[str, Any]:
         ],
         "okx_ai_agent_result": {
             "decision": "Need Input",
-            "caller_instruction": "请先用 OKX 查询用户目标资产的最新市场数据，并作为 external_market_data 传入 /immune/report。",
+            "caller_instruction": "请让用户按 next_user_template 补充交易想法；收到后先用 OKX 查询目标资产最新数据，并作为 external_market_data 或 okx_market_data 传入 /immune/report。",
+            "next_user_template": second_step_template,
             "recommended_display_field": "okx_ai_agent_result.display_markdown",
             "display_markdown": display_markdown,
         },

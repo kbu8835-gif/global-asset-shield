@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from config import DEXSCREENER_SEARCH_URL, DEXSCREENER_TOKEN_URL, MEME_TOKENS
-from scanner.okx_onchain import fetch_okx_onchain_token, fetch_okx_public_ticker
+from scanner.okx_onchain import OKX_PUBLIC_SPOT_SYMBOLS, fetch_okx_onchain_token, fetch_okx_public_ticker
 from scanner.utils import clamp_score, risk_level
 from schemas import RiskScan
 
@@ -126,6 +126,13 @@ def _to_float(value: Any, default: float = 0) -> float:
         return default
 
 
+def _looks_like_spot_inst_id(value: Any) -> bool:
+    if not value:
+        return False
+    text = str(value).strip().upper()
+    return text.endswith("-USDT") or text.endswith("-USDC")
+
+
 def _normalize_external_market_data(token: str, external_market_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not external_market_data:
         return None
@@ -133,6 +140,9 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
     source = str(data.get("source") or data.get("data_source") or data.get("provider") or data.get("数据源") or "external_market_data")
     source_lower = source.lower()
     primary_source = "external_okx_agent" if "okx" in source_lower or "onchain" in source_lower else "external_market_data"
+    symbol_value = _first_value(data, "symbol", "token_symbol", "tokenSymbol", "币种", "代币", "资产") or token.upper()
+    symbol = str(symbol_value).upper()
+    inst_id = _first_value(data, "inst_id", "instId", "instrument_id", "instrumentId", "pair", "pairId", "交易对")
 
     risk_value = _first_value(data, "risk_control_level", "riskLevelControl", "risk_level", "riskLevel", "risk", "风险控制等级")
     top10_value = _first_value(
@@ -174,6 +184,10 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "交易对链接",
         "链接",
     )
+    if not inst_id and _looks_like_spot_inst_id(pair_url):
+        inst_id = str(pair_url).strip().upper()
+    if not pair_url and inst_id:
+        pair_url = f"https://www.okx.com/trade-spot/{str(inst_id).lower()}"
     owner_privilege = str(_first_value(data, "owner_privilege", "ownerPrivilege", "owner_risk", "ownerRisk") or "").lower()
     token_tags = data.get("token_tags") or data.get("tokenTags") or []
     token_tags = [str(tag).lower() for tag in token_tags] if isinstance(token_tags, list) else [str(token_tags).lower()]
@@ -214,21 +228,31 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
             "sellTax",
         ]
     )
+    contract_address = _first_value(data, "contract_address", "address", "token_address", "contractAddress", "合约", "合约地址") or (
+        token if token.startswith("0x") else None
+    )
+    source_is_market = "market" in source_lower or "现货" in source_lower or "spot" in source_lower
+    is_public_spot = bool(
+        _flag(_first_value(data, "is_cex_market_data", "isCexMarketData"))
+        or _looks_like_spot_inst_id(inst_id)
+        or (source_is_market and not contract_address and symbol in OKX_PUBLIC_SPOT_SYMBOLS)
+    )
+    if is_public_spot:
+        primary_source = "okx_public_market" if primary_source == "external_okx_agent" else primary_source
 
     return {
         "source": source,
-        "symbol": _first_value(data, "symbol", "token_symbol", "tokenSymbol", "币种", "代币", "资产") or token.upper(),
+        "symbol": symbol,
         "name": _first_value(data, "name", "token_name", "tokenName", "名称") or token.upper(),
-        "contract_address": _first_value(data, "contract_address", "address", "token_address", "contractAddress", "合约", "合约地址")
-        or (token if token.startswith("0x") else None),
+        "contract_address": contract_address,
         "chain": _first_value(data, "chain", "chain_id", "chainId", "network", "链", "网络"),
         "price_usd": _to_float(
-            _first_value(data, "price_usd", "priceUsd", "price", "lastPrice", "last", "markPrice", "价格")
+            _first_value(data, "price_usd", "priceUsd", "price", "lastPrice", "last", "markPrice", "current_price", "currentPrice", "价格", "最新价格", "当前价格")
         ),
         "market_cap": _to_float(_first_value(data, "market_cap", "marketCap", "fdv", "mcap", "marketValue", "市值", "估值")),
         "liquidity": _to_float(_first_value(data, "liquidity", "liquidity_usd", "liquidityUsd", "liquidityUSD", "流动性")),
         "volume24h": _to_float(
-            _first_value(data, "volume24h", "volume_24h", "volume24H", "volume24hUsd", "volumeUsd24h", "volume", "h24_volume", "24h成交量", "24小时成交量", "成交量")
+            _first_value(data, "volume24h", "volume_24h", "volume24H", "volume24hUsd", "volumeUsd24h", "volCcy24h", "vol24h", "volume", "h24_volume", "24h成交量", "24小时成交量", "24h 交易量", "成交量")
         ),
         "pair_url": pair_url,
         "holders": _to_float(holders_value) if holders_value is not None else None,
@@ -245,6 +269,8 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "pool_depth_warning": _flag(_first_value(data, "pool_depth_warning", "poolDepthWarning", "depth_warning")),
         "liquidity_locked": _flag(_first_value(data, "liquidity_locked", "liquidityLocked")),
         "liquidity_lock_percent": _to_float(_first_value(data, "liquidity_lock_percent", "liquidityLockPercent")),
+        "is_cex_market_data": is_public_spot,
+        "inst_id": inst_id,
         "raw_external_market_data": data,
         "primary_data_source": primary_source,
     }
@@ -384,7 +410,13 @@ def scan_crypto(token: str, external_market_data: Optional[Dict[str, Any]] = Non
         okx_holders = okx_data.get("holders")
         is_cex_market_data = bool(okx_data.get("is_cex_market_data"))
         okx_liquidity_text = f"${okx_liquidity:,.0f}" if okx_liquidity is not None else "不适用"
-        if raw_data.get("external_market_data_used"):
+        if raw_data.get("external_market_data_used") and is_cex_market_data:
+            reasons.append(
+                "已使用调用方 Agent 传入的 OKX 市场行情作为第一数据源："
+                f"{okx_data.get('inst_id') or symbol} 价格 ${okx_price if okx_price is not None else '未知'}，"
+                f"24h 成交量 {('$' + format(okx_volume, ',.0f')) if okx_volume else '未知'}"
+            )
+        elif raw_data.get("external_market_data_used"):
             reasons.append(
                 "已使用调用方 Agent 传入的 OKX 链上行情作为第一数据源："
                 f"价格 ${okx_price if okx_price is not None else '未知'}，"

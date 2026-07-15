@@ -234,3 +234,34 @@ def test_crypto_scanner_uses_okx_public_market_for_major_symbols(monkeypatch):
     assert "已直接使用 OKX 公共现货行情" in reasons
     assert "流动性低于 50,000" not in reasons
     assert "没有 GoPlus 安全数据" not in reasons
+
+
+def test_crypto_scanner_treats_external_okx_spot_as_cex_market(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call public ticker")))
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call dexscreener")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: (_ for _ in ()).throw(RuntimeError("should not call goplus")))
+
+    result = scan_crypto(
+        "ETH",
+        external_market_data={
+            "source": "OKX Market + OKX OnchainOS",
+            "symbol": "ETH",
+            "instId": "ETH-USDT",
+            "last": "1924",
+            "volCcy24h": "509424899",
+            "riskLevel": "LOW",
+        },
+    )
+    reasons = " ".join(result.risk_reasons)
+
+    assert result.raw_data["external_market_data_used"] is True
+    assert result.raw_data["primary_data_source"] == "okx_public_market"
+    assert result.raw_data["is_cex_market_data"] is True
+    assert result.raw_data["price_usd"] == 1924
+    assert result.raw_data["volume24h"] == 509_424_899
+    assert result.raw_data["pair_url"] == "https://www.okx.com/trade-spot/eth-usdt"
+    assert result.raw_data["security_source"] == "not_applicable_for_okx_spot"
+    assert "OKX 市场行情" in reasons
+    assert "流动性低于 50,000" not in reasons
+    assert "没有 GoPlus 安全数据" not in reasons

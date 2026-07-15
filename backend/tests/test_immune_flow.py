@@ -29,9 +29,25 @@ def test_immune_report_empty_payload_returns_usage_guide():
     assert data["status"] == "needs_user_input"
     assert data["okx_ai_agent_result"]["recommended_display_field"] == "okx_ai_agent_result.display_markdown"
     assert data["okx_agent_protocol"]["pre_call_required"] is True
-    assert "external_market_data" in data["message"]
+    assert "交易想法" in data["message"]
+    assert "usage_instruction" in data
+    assert "next_user_template" in data
+    assert "trade_idea_examples" in data
+    assert len(data["trade_idea_examples"]) >= 3
+    assert "OKX.AI 推荐调用模板" in data["usage_instruction"]
+    assert "请只复制下面" in data["usage_instruction"]
+    assert "OKX.AI 推荐调用模板" not in data["next_user_template"]
+    assert "请复制" not in data["next_user_template"]
+    assert "这里改成你的交易想法" in data["next_user_template"]
+    assert "okx_market_data" in data["next_user_template"]
     assert "先用 OKX 查询" in data["okx_ai_agent_result"]["caller_instruction"]
-    assert "给 OKX Agent 的调用协议" in data["okx_ai_agent_result"]["display_markdown"]
+    assert "你现在只需要做一件事" in data["okx_ai_agent_result"]["display_markdown"]
+    assert "可复制模板" in data["okx_ai_agent_result"]["display_markdown"]
+    assert "```text" in data["okx_ai_agent_result"]["display_markdown"]
+    assert "交易想法可以这样写" in data["okx_ai_agent_result"]["display_markdown"]
+    assert "接下来 Agent 会做什么" in data["okx_ai_agent_result"]["display_markdown"]
+    assert "这里只改成你的交易想法" not in data["okx_ai_agent_result"]["display_markdown"]
+    assert "这里改成你的交易想法" in data["okx_ai_agent_result"]["display_markdown"]
     assert "我想买 PEPE" in data["okx_ai_agent_result"]["display_markdown"]
 
 
@@ -566,6 +582,48 @@ def test_immune_report_accepts_external_okx_stock_market_data(monkeypatch):
     assert "OKX Market Agent 美股行情" in " ".join(data["risk_scan"]["risk_reasons"])
     assert "OKX Market Agent" in data["okx_ai_agent_result"]["market_snapshot"]
     assert "数据源：OKX Market Agent" in data["okx_ai_agent_result"]["display_markdown"]
+
+
+def test_immune_report_treats_external_okx_spot_as_high_confidence(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call public ticker")))
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: (_ for _ in ()).throw(RuntimeError("should not call goplus")))
+
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "ETH",
+            "asset_type": "crypto",
+            "trade_direction": "short",
+            "user_intent": "自己研究",
+            "user_text": "我想做空eth，现在是下跌趋势，准备30%仓位，跌10%继续补仓",
+            "buy_reason": "现在是下跌趋势",
+            "risk_awareness": "担心趋势继续",
+            "worst_case_plan": "跌10%继续补仓",
+            "position_size": "30%",
+            "okx_market_data": {
+                "source": "OKX Market + OKX OnchainOS",
+                "symbol": "ETH",
+                "instId": "ETH-USDT",
+                "last": "1924",
+                "volCcy24h": "509424899",
+                "riskLevel": "LOW",
+            },
+        },
+    )
+
+    data = response.json()
+    raw = data["risk_scan"]["raw_data"]
+
+    assert response.status_code == 200
+    assert raw["external_market_data_used"] is True
+    assert raw["primary_data_source"] == "okx_public_market"
+    assert raw["is_cex_market_data"] is True
+    assert data["data_confidence"]["level"] == "High Confidence"
+    assert data["data_confidence"]["score"] == 100
+    assert "OKX 市场行情" in " ".join(data["risk_scan"]["risk_reasons"])
+    assert "合约安全" not in data["data_confidence"]["missing"]
 
 
 def test_okx_ai_result_surfaces_external_okx_security_scan(monkeypatch):
