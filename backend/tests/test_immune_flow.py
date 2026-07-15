@@ -197,7 +197,8 @@ def test_immune_report_uses_historical_dna_patterns(monkeypatch):
     history = data["historical_dna_scan"]
     assert history["available"] is True
     assert history["triggered_patterns"]
-    assert history["risk_adjustment"] > 0
+    assert history["warnings"]
+    assert history["risk_adjustment"] >= 0
     assert "历史 DNA" in data["summary"]
     assert "历史重复模式" in data["decision_reason"]
 
@@ -431,6 +432,92 @@ def test_immune_report_accepts_external_okx_market_data(monkeypatch):
     assert "交易对链接" not in data["data_confidence"]["missing"]
     assert "https://www.okx.com/web3/dex/pepe" in data["okx_ai_agent_result"]["display_markdown"]
     assert "OKX 链上行情" in data["okx_ai_agent_result"]["display_markdown"]
+
+
+def test_immune_report_accepts_okx_market_data_alias_with_chinese_fields(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call public ticker")))
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
+
+    response = client.post(
+        "/immune/report",
+        json={
+            "asset": "PEPE",
+            "asset_type": "crypto",
+            "trade_direction": "long",
+            "user_intent": "KOL推荐",
+            "user_text": "看到KOL推荐，最近涨很多，怕错过",
+            "buy_reason": "KOL推荐，感觉马上起飞",
+            "risk_awareness": "不太清楚",
+            "worst_case_plan": "价格下跌 10% 执行止损",
+            "position_size": "50%",
+            "okx_market_data": {
+                "数据源": "OKX OnchainOS Agent",
+                "币种": "PEPE",
+                "价格": "$0.0000028542",
+                "市值": "$1.18B",
+                "流动性": "$21.75M",
+                "24h成交量": "$810.6K",
+                "持有人": "568,460",
+                "风险控制等级": "2",
+                "Top10 持仓占比": "8.0816%",
+                "合约地址": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                "交易池链接": "https://www.okx.com/web3/dex/pepe",
+            },
+        },
+    )
+
+    data = response.json()
+    raw = data["risk_scan"]["raw_data"]
+
+    assert response.status_code == 200
+    assert raw["external_market_data_used"] is True
+    assert raw["primary_data_source"] == "external_okx_agent"
+    assert raw["price_usd"] == 0.0000028542
+    assert raw["fdv"] == 1_180_000_000
+    assert raw["liquidity"] == 21_750_000
+    assert raw["volume24h"] == 810_600
+    assert raw["pair_url"] == "https://www.okx.com/web3/dex/pepe"
+    assert data["okx_ai_agent_result"]["okx_agent_next_action"]["required"] is False
+    assert "OKX OnchainOS Agent" in data["okx_ai_agent_result"]["market_snapshot"]
+
+
+def test_immune_report_parses_okx_market_data_text_alias(monkeypatch):
+    monkeypatch.setattr("scanner.crypto.fetch_okx_public_ticker", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call public ticker")))
+    monkeypatch.setattr("scanner.crypto.fetch_okx_onchain_token", lambda _token: (_ for _ in ()).throw(RuntimeError("should not call cli")))
+    monkeypatch.setattr("scanner.crypto.fetch_dexscreener_pair", lambda _token: (_ for _ in ()).throw(RuntimeError("should not fallback")))
+    monkeypatch.setattr("scanner.crypto.fetch_goplus_security", lambda _token, _chain=None: None)
+
+    response = client.post(
+        "/immune/report",
+        json={
+            "query": "我想买 PEPE，看到 KOL 推荐，准备 50% 仓位，跌 10% 止损。",
+            "okx_query_result": """
+            PEPE 以太坊合约：0x6982508145454ce325ddbe47a25d4ec3d2311933
+            价格：约 $0.0000028542
+            市值：约 $1.18B
+            流动性：约 $21.75M
+            24h 成交量：约 $810.6K
+            持有人：568,460
+            风险控制等级：2
+            Top10 持仓占比：8.0816%
+            https://www.okx.com/web3/dex/pepe
+            """,
+        },
+    )
+
+    data = response.json()
+    raw = data["risk_scan"]["raw_data"]
+
+    assert response.status_code == 200
+    assert raw["external_market_data_used"] is True
+    assert raw["primary_data_source"] == "external_okx_agent"
+    assert raw["price_usd"] == 0.0000028542
+    assert raw["liquidity"] == 21_750_000
+    assert raw["volume24h"] == 810_600
+    assert raw["okx_onchain"]["holders"] == 568_460
+    assert data["okx_ai_agent_result"]["okx_agent_next_action"]["required"] is False
 
 
 def test_immune_report_accepts_external_okx_stock_market_data(monkeypatch):

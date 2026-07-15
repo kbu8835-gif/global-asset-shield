@@ -108,6 +108,153 @@ def _text_from_payload(payload: Any) -> str:
     return ""
 
 
+EXTERNAL_MARKET_ALIASES = (
+    "external_market_data",
+    "externalMarketData",
+    "okx_data",
+    "okxData",
+    "okx_market_data",
+    "okxMarketData",
+    "market_data",
+    "marketData",
+    "onchain_data",
+    "onchainData",
+    "token_data",
+    "tokenData",
+    "okx_query_result",
+    "okxQueryResult",
+)
+
+MARKET_FIELD_HINTS = {
+    "source",
+    "provider",
+    "symbol",
+    "tokenSymbol",
+    "price",
+    "priceUsd",
+    "lastPrice",
+    "market_cap",
+    "marketCap",
+    "marketValue",
+    "liquidity",
+    "liquidityUsd",
+    "liquidityUSD",
+    "volume24h",
+    "volume24H",
+    "volumeUsd24h",
+    "24h成交量",
+    "24小时成交量",
+    "成交量",
+    "holders",
+    "holderCount",
+    "risk_control_level",
+    "riskLevelControl",
+    "top10_hold_percent",
+    "top10HoldPercent",
+    "top10HolderRatio",
+    "Top10 持仓占比",
+    "top10持仓占比",
+    "pair_url",
+    "poolUrl",
+    "okx_url",
+    "合约",
+    "合约地址",
+    "价格",
+    "市值",
+    "流动性",
+    "持有人",
+    "风险控制等级",
+}
+
+
+def _to_number_text(value: str) -> Optional[float]:
+    cleaned = value.replace(",", "").replace("$", "").strip()
+    multiplier = 1.0
+    if cleaned.lower().endswith("k"):
+        multiplier = 1_000
+        cleaned = cleaned[:-1]
+    elif cleaned.lower().endswith("m"):
+        multiplier = 1_000_000
+        cleaned = cleaned[:-1]
+    elif cleaned.lower().endswith("b"):
+        multiplier = 1_000_000_000
+        cleaned = cleaned[:-1]
+    try:
+        return float(cleaned) * multiplier
+    except ValueError:
+        return None
+
+
+def _parse_market_data_text(text: str) -> Dict[str, Any]:
+    data: Dict[str, Any] = {"source": "OKX Agent Text"}
+    patterns = {
+        "price": r"(?:价格|price)\D{0,8}([0-9][0-9.,]*(?:e-?\d+)?|0?\.\d+)",
+        "market_cap": r"(?:市值|market cap|market_cap)\D{0,12}\$?\s*([0-9][0-9.,]*(?:[KMBkmb])?)",
+        "liquidity": r"(?:流动性|liquidity)\D{0,12}\$?\s*([0-9][0-9.,]*(?:[KMBkmb])?)",
+        "volume24h": r"(?:24h 成交量|24小时成交量|成交量|volume)\D{0,12}\$?\s*([0-9][0-9.,]*(?:[KMBkmb])?)",
+        "holders": r"(?:持有人|holders?)\D{0,12}([0-9][0-9,]*)",
+        "risk_control_level": r"(?:风险控制等级|risk control level|riskLevelControl)\D{0,8}([0-9]+)",
+        "top10_hold_percent": r"(?:Top10 持仓占比|top10 hold|top10HolderRatio|top10HoldPercent)\D{0,12}([0-9.]+)\s*%?",
+    }
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            number = _to_number_text(match.group(1))
+            if number is not None:
+                data[key] = number
+    contract = re.search(r"0x[a-fA-F0-9]{40}", text)
+    if contract:
+        data["contract_address"] = contract.group(0)
+    url = re.search(r"https?://[^\s，。；)）]+", text)
+    if url:
+        data["pair_url"] = url.group(0)
+    return data if len(data) > 1 else {}
+
+
+def _coerce_market_data_candidate(value: Any) -> Optional[Dict[str, Any]]:
+    if isinstance(value, str) and value.strip():
+        return _parse_market_data_text(value)
+    if not isinstance(value, dict):
+        return None
+
+    for key in ("data", "result", "market", "token", "token_data", "market_data"):
+        nested = value.get(key)
+        if isinstance(nested, dict) and any(field in nested for field in MARKET_FIELD_HINTS):
+            return nested
+        if isinstance(nested, str) and nested.strip():
+            parsed = _parse_market_data_text(nested)
+            if parsed:
+                return parsed
+
+    if any(key in value for key in MARKET_FIELD_HINTS):
+        return value
+    return None
+
+
+def _extract_external_market_data(payload: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+    for key in EXTERNAL_MARKET_ALIASES:
+        parsed = _coerce_market_data_candidate(payload.get(key))
+        if parsed:
+            return parsed
+    nested = payload.get("data") or payload.get("result") or payload.get("market") or payload.get("token")
+    if isinstance(nested, str) and nested.strip():
+        parsed = _parse_market_data_text(nested)
+        if parsed:
+            return parsed
+    elif isinstance(nested, dict):
+        for key in EXTERNAL_MARKET_ALIASES:
+            parsed = _coerce_market_data_candidate(nested.get(key))
+            if parsed:
+                return parsed
+        if any(key in nested for key in MARKET_FIELD_HINTS):
+            return nested
+    if any(key in payload for key in MARKET_FIELD_HINTS):
+        return {key: value for key, value in payload.items() if key in MARKET_FIELD_HINTS or key not in {"asset", "asset_type"}}
+    return None
+
+
 def _extract_asset(text: str) -> Optional[str]:
     upper_text = text.upper()
     for symbol in sorted(STOCK_SYMBOLS | CRYPTO_HINTS, key=len, reverse=True):
@@ -273,7 +420,12 @@ def _horizon(text: str) -> Optional[str]:
 
 def build_request_from_loose_payload(payload: Any) -> Optional[ImmuneReportRequest]:
     if isinstance(payload, dict) and payload.get("asset") and payload.get("asset_type"):
-        return ImmuneReportRequest(**payload)
+        data = dict(payload)
+        if not data.get("external_market_data"):
+            external_market_data = _extract_external_market_data(data)
+            if external_market_data:
+                data["external_market_data"] = external_market_data
+        return ImmuneReportRequest(**data)
 
     text = _text_from_payload(payload)
     if not text:
@@ -283,6 +435,7 @@ def build_request_from_loose_payload(payload: Any) -> Optional[ImmuneReportReque
         return None
 
     direction = _trade_direction(text)
+    external_market_data = _extract_external_market_data(payload)
     return ImmuneReportRequest(
         asset=asset,
         asset_type=_asset_type(asset, text),
@@ -296,4 +449,5 @@ def build_request_from_loose_payload(payload: Any) -> Optional[ImmuneReportReque
         sideways_plan=_sideways_plan(text),
         position_size=_position_size(text),
         horizon=_horizon(text),
+        external_market_data=external_market_data,
     )

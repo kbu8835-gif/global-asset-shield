@@ -108,6 +108,19 @@ def _first_value(data: Dict[str, Any], *keys: str) -> Any:
 
 def _to_float(value: Any, default: float = 0) -> float:
     try:
+        if isinstance(value, str):
+            cleaned = value.replace(",", "").replace("$", "").replace("`", "").strip()
+            multiplier = 1.0
+            if cleaned.lower().endswith("k"):
+                multiplier = 1_000
+                cleaned = cleaned[:-1]
+            elif cleaned.lower().endswith("m"):
+                multiplier = 1_000_000
+                cleaned = cleaned[:-1]
+            elif cleaned.lower().endswith("b"):
+                multiplier = 1_000_000_000
+                cleaned = cleaned[:-1]
+            return float(cleaned) * multiplier
         return float(value)
     except (TypeError, ValueError):
         return default
@@ -117,11 +130,11 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
     if not external_market_data:
         return None
     data = dict(external_market_data)
-    source = str(data.get("source") or data.get("data_source") or data.get("provider") or "external_market_data")
+    source = str(data.get("source") or data.get("data_source") or data.get("provider") or data.get("数据源") or "external_market_data")
     source_lower = source.lower()
     primary_source = "external_okx_agent" if "okx" in source_lower or "onchain" in source_lower else "external_market_data"
 
-    risk_value = _first_value(data, "risk_control_level", "riskLevelControl", "risk_level", "riskLevel", "risk")
+    risk_value = _first_value(data, "risk_control_level", "riskLevelControl", "risk_level", "riskLevel", "risk", "风险控制等级")
     top10_value = _first_value(
         data,
         "top10_hold_percent",
@@ -130,11 +143,13 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "top_10_holders_percent",
         "top10HolderRatio",
         "top10_holding_ratio",
+        "Top10 持仓占比",
+        "top10持仓占比",
     )
     dev_value = _first_value(data, "dev_holding_percent", "devHoldingPercent", "developer_holding_percent", "devHoldPercent")
     bundle_value = _first_value(data, "bundle_holding_percent", "bundleHoldingPercent", "bundleHoldPercent")
     suspicious_value = _first_value(data, "suspicious_holding_percent", "suspiciousHoldingPercent", "suspiciousHoldPercent")
-    holders_value = _first_value(data, "holders", "holder_count", "holderCount", "holdersCount", "holder")
+    holders_value = _first_value(data, "holders", "holder_count", "holderCount", "holdersCount", "holder", "持有人", "持有人数")
     liquidity_change_value = _first_value(
         data,
         "liquidity_change_24h",
@@ -155,6 +170,9 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
         "tokenUrl",
         "explorer_url",
         "explorerUrl",
+        "交易池链接",
+        "交易对链接",
+        "链接",
     )
     owner_privilege = str(_first_value(data, "owner_privilege", "ownerPrivilege", "owner_risk", "ownerRisk") or "").lower()
     token_tags = data.get("token_tags") or data.get("tokenTags") or []
@@ -199,16 +217,18 @@ def _normalize_external_market_data(token: str, external_market_data: Optional[D
 
     return {
         "source": source,
-        "symbol": _first_value(data, "symbol", "token_symbol", "tokenSymbol") or token.upper(),
-        "name": _first_value(data, "name", "token_name", "tokenName") or token.upper(),
-        "contract_address": _first_value(data, "contract_address", "address", "token_address", "contractAddress")
+        "symbol": _first_value(data, "symbol", "token_symbol", "tokenSymbol", "币种", "代币", "资产") or token.upper(),
+        "name": _first_value(data, "name", "token_name", "tokenName", "名称") or token.upper(),
+        "contract_address": _first_value(data, "contract_address", "address", "token_address", "contractAddress", "合约", "合约地址")
         or (token if token.startswith("0x") else None),
-        "chain": _first_value(data, "chain", "chain_id", "chainId", "network"),
-        "price_usd": _first_value(data, "price_usd", "priceUsd", "price", "lastPrice", "last", "markPrice"),
-        "market_cap": _to_float(_first_value(data, "market_cap", "marketCap", "fdv", "mcap", "marketValue")),
-        "liquidity": _to_float(_first_value(data, "liquidity", "liquidity_usd", "liquidityUsd", "liquidityUSD")),
+        "chain": _first_value(data, "chain", "chain_id", "chainId", "network", "链", "网络"),
+        "price_usd": _to_float(
+            _first_value(data, "price_usd", "priceUsd", "price", "lastPrice", "last", "markPrice", "价格")
+        ),
+        "market_cap": _to_float(_first_value(data, "market_cap", "marketCap", "fdv", "mcap", "marketValue", "市值", "估值")),
+        "liquidity": _to_float(_first_value(data, "liquidity", "liquidity_usd", "liquidityUsd", "liquidityUSD", "流动性")),
         "volume24h": _to_float(
-            _first_value(data, "volume24h", "volume_24h", "volume24H", "volume24hUsd", "volumeUsd24h", "volume", "h24_volume")
+            _first_value(data, "volume24h", "volume_24h", "volume24H", "volume24hUsd", "volumeUsd24h", "volume", "h24_volume", "24h成交量", "24小时成交量", "成交量")
         ),
         "pair_url": pair_url,
         "holders": _to_float(holders_value) if holders_value is not None else None,
